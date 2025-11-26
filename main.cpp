@@ -1,11 +1,11 @@
-#include <iostream>
-#include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
+# include <iostream>
+# include <pcl/point_types.h>
+# include <pcl/point_cloud.h>
+# include <Eigen/Dense>
 
 int main() {
     pcl::PointCloud<pcl::PointXYZ> cloud;
 
-    // Fill the cloud with some dummy data
     cloud.width = 5;
     cloud.height = 1;
     cloud.is_dense = false;
@@ -22,6 +22,16 @@ int main() {
         std::cout << "    " << point.x << " " << point.y << " " << point.z << std::endl;
     }
     std::cout << "PCL point cloud example placeholder." << std::endl;
+
+    Eigen::Matrix2i A;
+
+    A << 1, 2,
+         3, 4;
+
+    int determinant = A.determinant();
+
+    std::cout << "Eigen Matrix A:\n" << A << std::endl;
+    std::cout << "Determinant of A: " << determinant << std::endl;
 
     return 0;
 }
