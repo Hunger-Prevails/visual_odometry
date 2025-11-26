@@ -1,0 +1,50 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "CMake: Configure",
+            "type": "shell",
+            "command": "call \"C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\Tools\\VsDevCmd.bat\" && set VCPKG_ROOT=C:\\DASI\\Code\\vcpkg && cmake --preset msvc-debug",
+            "group": "build",
+            "options": {
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/k"
+                    ]
+                }
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": [],
+            "detail": "Runs CMake configure within the VS Developer Command Prompt."
+        },
+        {
+            "label": "CMake: Build",
+            "type": "shell",
+            "command": "call \"C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\Tools\\VsDevCmd.bat\" && set VCPKG_ROOT=C:\\DASI\\Code\\vcpkg && cmake --build build/msvc-debug",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "options": {
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/k"
+                    ]
+                }
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": [
+                "$msCompile"
+            ],
+            "detail": "Runs CMake build within the VS Developer Command Prompt."
+        }
+    ]
+}
