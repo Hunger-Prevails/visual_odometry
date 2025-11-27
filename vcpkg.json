@@ -1,0 +1,11 @@
+{
+    "name": "test-pcl-libigl",
+    "version-string": "1.0.0",
+    "dependencies": [
+        "pcl",
+        {
+            "name": "libigl",
+            "features": [ "opengl", "glfw" ]
+        }
+    ]
+}

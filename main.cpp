@@ -2,6 +2,8 @@
 # include <pcl/point_types.h>
 # include <pcl/point_cloud.h>
 # include <Eigen/Dense>
+# include <Eigen/Core>
+# include <igl/cotmatrix.h>
 
 int main() {
     pcl::PointCloud<pcl::PointXYZ> cloud;
@@ -32,6 +34,23 @@ int main() {
 
     std::cout << "Eigen Matrix A:\n" << A << std::endl;
     std::cout << "Determinant of A: " << determinant << std::endl;
+
+    Eigen::MatrixXd V(4, 2); // 4 vertices, 2D coordinates (V)
+    V << 0, 0,
+         1, 0,
+         1, 1,
+         0, 1;
+
+    Eigen::MatrixXi F(2, 3); // 2 faces (triangles), 3 indices each (F)
+    F << 0, 1, 2,
+         0, 2, 3;
+
+    Eigen::SparseMatrix<double> L; // The output: a sparse matrix for the Laplacian
+
+    // Use a libigl function!
+    igl::cotmatrix(V, F, L);
+
+    std::cout << "Computed Cotangent Laplacian Matrix L:\n" << L << std::endl;
 
     return 0;
 }

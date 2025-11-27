@@ -4,7 +4,7 @@
         {
             "label": "CMake: Configure",
             "type": "shell",
-            "command": "call \"C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\Tools\\VsDevCmd.bat\" && set VCPKG_ROOT=C:\\DASI\\Code\\vcpkg && cmake --preset msvc-debug",
+            "command": "call \"C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat\" && set VCPKG_ROOT=C:\\DASI\\Code\\vcpkg && cmake --preset msvc-debug",
             "group": "build",
             "options": {
                 "shell": {
@@ -19,12 +19,12 @@
                 "panel": "new"
             },
             "problemMatcher": [],
-            "detail": "Runs CMake configure within the VS Developer Command Prompt."
+            "detail": "Runs CMake configure within the x64 Native Tools Command Prompt."
         },
         {
             "label": "CMake: Build",
             "type": "shell",
-            "command": "call \"C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\Tools\\VsDevCmd.bat\" && set VCPKG_ROOT=C:\\DASI\\Code\\vcpkg && cmake --build build/msvc-debug",
+            "command": "call \"C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat\" && set VCPKG_ROOT=C:\\DASI\\Code\\vcpkg && cmake --build build/msvc-debug",
             "group": {
                 "kind": "build",
                 "isDefault": true
@@ -44,7 +44,21 @@
             "problemMatcher": [
                 "$msCompile"
             ],
-            "detail": "Runs CMake build within the VS Developer Command Prompt."
+            "detail": "Runs CMake build within the x64 Native Tools Command Prompt."
+        },
+        {
+            "label": "Run: Execute",
+            "type": "shell",
+            "command": ".\\build\\msvc-debug\\main.exe",
+            "group": {
+                "kind": "test"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": [],
+            "detail": "Runs the built executable."
         }
     ]
 }
