@@ -47,9 +47,34 @@
             "detail": "Runs CMake build within the x64 Native Tools Command Prompt."
         },
         {
-            "label": "Run: Execute",
+            "label": "CMake: Build Clean",
             "type": "shell",
-            "command": ".\\build\\msvc-debug\\main.exe",
+            "command": "call \"C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\VC\\Auxiliary\\Build\\vcvars64.bat\" && set VCPKG_ROOT=C:\\DASI\\Code\\vcpkg && cmake --build build/msvc-debug --target clean",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "options": {
+                "shell": {
+                    "executable": "cmd.exe",
+                    "args": [
+                        "/k"
+                    ]
+                }
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": [
+                "$msCompile"
+            ],
+            "detail": "Cleans CMake build within the x64 Native Tools Command Prompt."
+        },
+        {
+            "label": "Run: Execute Tests",
+            "type": "shell",
+            "command": ".\\build\\msvc-debug\\tests\\test.exe",
             "group": {
                 "kind": "test"
             },
@@ -58,7 +83,21 @@
                 "panel": "new"
             },
             "problemMatcher": [],
-            "detail": "Runs the built executable."
+            "detail": "Runs the built test executable."
+        },
+        {
+            "label": "Run: Execute Apps",
+            "type": "shell",
+            "command": ".\\build\\msvc-debug\\apps\\main.exe",
+            "group": {
+                "kind": "test"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": [],
+            "detail": "Runs the built app executable."
         }
     ]
 }
