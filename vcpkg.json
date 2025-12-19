@@ -1,8 +1,19 @@
 {
-    "name": "test-pcl-libigl",
+    "name": "visual-odometry",
     "version-string": "1.0.0",
     "dependencies": [
         "pcl",
+        {
+            "name": "opencv4",
+            "default-features": false,
+            "features": [
+                "eigen",
+                "jpeg",
+                "png",
+                "tiff",
+                "calib3d"
+            ]
+        },
         {
             "name": "libigl",
             "features": [ "opengl", "glfw" ]

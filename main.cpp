@@ -4,6 +4,8 @@
 # include <Eigen/Dense>
 # include <Eigen/Core>
 # include <igl/cotmatrix.h>
+# include <opencv2/opencv.hpp>
+# include <opencv2/core/eigen.hpp>
 
 int main() {
     pcl::PointCloud<pcl::PointXYZ> cloud;
@@ -52,5 +54,27 @@ int main() {
 
     std::cout << "Computed Cotangent Laplacian Matrix L:\n" << L << std::endl;
 
+    // Check SIFT
+    try {
+        cv::Ptr<cv::SIFT> sift = cv::SIFT::create();
+        std::cout << "SIFT Detector: Successfully initialized." << std::endl;
+    } catch (const cv::Exception& e) {
+        std::cerr << "SIFT Error: " << e.what() << std::endl;
+    }
+
+    // Check Eigen Integration
+    Eigen::Matrix3d eigen_mat = Eigen::Matrix3d::Identity();
+    cv::Mat cv_mat;
+    cv::eigen2cv(eigen_mat, cv_mat);
+
+    if (cv_mat.at<double>(0,0) == 1.0 && cv_mat.rows == 3) {
+        std::cout << "Eigen -> OpenCV Bridge: Working correctly." << std::endl;
+    }
+
+    // Test Image Container
+    cv::Mat test_img = cv::Mat::zeros(100, 100, CV_8UC1);
+    if (!test_img.empty()) {
+        std::cout << "Core Image Container: Working correctly." << std::endl;
+    }
     return 0;
 }
