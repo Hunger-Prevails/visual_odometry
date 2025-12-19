@@ -2,6 +2,8 @@
     "name": "visual-odometry",
     "version-string": "1.0.0",
     "dependencies": [
+        "cxxopts",
+        "eigen3",
         "pcl",
         {
             "name": "opencv4",

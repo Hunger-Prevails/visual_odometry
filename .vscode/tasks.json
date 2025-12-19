@@ -84,20 +84,6 @@
             },
             "problemMatcher": [],
             "detail": "Runs the built test executable."
-        },
-        {
-            "label": "Run: Execute Apps",
-            "type": "shell",
-            "command": ".\\build\\msvc-debug\\apps\\main.exe",
-            "group": {
-                "kind": "test"
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "new"
-            },
-            "problemMatcher": [],
-            "detail": "Runs the built app executable."
         }
     ]
 }
