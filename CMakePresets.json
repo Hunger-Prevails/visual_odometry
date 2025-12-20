@@ -8,6 +8,7 @@
             "binaryDir": "${sourceDir}/build/${presetName}",
             "installDir": "${sourceDir}/install/${presetName}",
             "cacheVariables": {
+                "CMAKE_PREFIX_PATH": "C:/DASI/Code/json/build",
                 "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
                 "VCPKG_TARGET_TRIPLET": "x64-windows",
                 "VCPKG_HOST_TRIPLET": "x64-windows",

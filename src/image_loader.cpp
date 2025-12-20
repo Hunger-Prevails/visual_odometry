@@ -17,7 +17,7 @@ bool ImageLoader::hasNext() const {
 }
 
 cv::Mat ImageLoader::next() {
-    if (!hasNext()) throw std::runtime_error("no more frames to load: " + paths[current_index].string());
+    if (!hasNext()) throw std::out_of_range("no more frames to load: " + paths[current_index].string());
 
     return cv::imread(paths[current_index ++].string(), cv::IMREAD_COLOR);
 }

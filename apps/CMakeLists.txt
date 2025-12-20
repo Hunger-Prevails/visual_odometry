@@ -1,9 +1,15 @@
 find_package(cxxopts CONFIG REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(nlohmann_json 3.12.0 REQUIRED)
 find_package(OpenCV REQUIRED)
 
 add_executable(main main.cpp)
 if(MSVC)
     target_compile_options(main PRIVATE /EHsc)
 endif()
-target_link_libraries(main PRIVATE odometer cxxopts::cxxopts Eigen3::Eigen opencv_core opencv_features2d opencv_imgproc)
+target_link_libraries(main PRIVATE odometer cxxopts::cxxopts Eigen3::Eigen nlohmann_json::nlohmann_json opencv_core opencv_features2d opencv_imgproc opencv_imgcodecs)
+
+if(EXISTS ${CMAKE_SOURCE_DIR}/res)
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/res)
+    file(COPY ${CMAKE_SOURCE_DIR}/res/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/res/)
+endif()
