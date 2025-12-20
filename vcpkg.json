@@ -4,6 +4,7 @@
     "dependencies": [
         "cxxopts",
         "eigen3",
+        "ceres",
         "pcl",
         {
             "name": "opencv4",

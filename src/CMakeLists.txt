@@ -1,5 +1,6 @@
-find_package(Eigen3 REQUIRED)
-find_package(OpenCV REQUIRED)
+find_package(Ceres CONFIG REQUIRED)
+find_package(Eigen3 CONFIG REQUIRED)
+find_package(OpenCV CONFIG REQUIRED)
 
 add_library(odometer odometer.cpp image_loader.cpp)
 target_include_directories(odometer PUBLIC ${CMAKE_SOURCE_DIR}/include)
@@ -8,6 +9,7 @@ if(MSVC)
 endif()
 target_link_libraries(
     odometer PRIVATE
+        Ceres::ceres
         Eigen3::Eigen
         opencv_core
         opencv_features2d
