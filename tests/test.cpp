@@ -12,7 +12,7 @@
 struct CostFunctor {
     template <typename T>
     bool operator()(const T* const x, T* residual) const {
-        residual[0] = 10.0 - x[0];
+        residual[0] = T(10.0) - x[0];
         return true;
     }
 };
@@ -44,9 +44,11 @@ int main() {
     double initial_x = x;
 
     ceres::Problem problem;
-    ceres::CostFunction* cost_function =
-        new ceres::AutoDiffCostFunction<CostFunctor, 1, 1>(new CostFunctor);
-    problem.AddResidualBlock(cost_function, nullptr, &x);
+
+    auto cost_function = new ceres::AutoDiffCostFunction<CostFunctor, 1, 1>(new CostFunctor());
+    auto loss_function = new ceres::HuberLoss(1.0);
+
+    problem.AddResidualBlock(cost_function, loss_function, &x);
 
     ceres::Solver::Options options;
     options.minimizer_progress_to_stdout = true;
