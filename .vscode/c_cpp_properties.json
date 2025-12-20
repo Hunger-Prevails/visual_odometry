@@ -4,7 +4,6 @@
             "name": "MSVC Debug",
             "includePath": [
                 "C:/DASI/Code/vcpkg/installed/x64-windows/include",
-                "C:/DASI/Code/json/single_include",
                 "${workspaceFolder}/**" 
             ],
             "defines": [

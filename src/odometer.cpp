@@ -2,6 +2,7 @@
 # include <Eigen/Core>
 # include <opencv2/opencv.hpp>
 # include <ranges>
+# include <indicators/progress_bar.hpp>
 # include "odometer.hpp"
 # include "image_loader.hpp"
 
@@ -42,8 +43,31 @@ void Odometer::processFrames() {
     if (!is_initialized) {
         throw std::runtime_error("Call initialize() with two frames before processing frames.");
     }
-    for (size_t i = 1; i < temporal_baseline; ++i) processFrame(i);
-    for (size_t i = temporal_baseline; i < loader->size(); ++i) processFrame(i);
+    indicators::ProgressBar bar_a{
+        indicators::option::MaxProgress{temporal_baseline - 1},
+        indicators::option::Start{"["},
+        indicators::option::Fill{"="},
+        indicators::option::Lead{">"},
+        indicators::option::End{"]"},
+        indicators::option::PrefixText{"process baseline frames:"}
+    };
+    for (size_t i = 1; i < temporal_baseline; ++i) {
+        bar_a.tick();
+        processFrame(i);
+    }
+
+    indicators::ProgressBar bar_b{
+        indicators::option::MaxProgress{loader->size() - temporal_baseline},
+        indicators::option::Start{"["},
+        indicators::option::Fill{"="},
+        indicators::option::Lead{">"},
+        indicators::option::End{"]"},
+        indicators::option::PrefixText{"process subsequent frames:"}
+    };
+    for (size_t i = temporal_baseline; i < loader->size(); ++i) {
+        bar_b.tick();
+        processFrame(i);
+    }
 
     std::cout << "Completes visual odometry" << std::endl;
 }

@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
 
     Eigen::Matrix3f intrinsics = load_intrinsics(intrinsics_path, args["camera"].as<std::string>());
 
-    std::cout << "intrinsics matrix:\n" << intrinsics << std::endl;
+    std::cout << "to assume intrinsics matrix:\n" << intrinsics << std::endl;
 
     auto odometer = std::make_unique<Odometer>(intrinsics, loader, args["temporal_baseline"].as<int>());
 
