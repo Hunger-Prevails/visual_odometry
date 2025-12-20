@@ -42,32 +42,29 @@ int main(int argc, char *argv[])
 
     options.add_options()("sequence", "Path to the image sequence to process", cxxopts::value<fs::path>());
     options.add_options()("camera", "Name of camera", cxxopts::value<std::string>()->default_value("default"));
+    options.add_options()("temporal_baseline", "Number of frames between the two frames chosen for initialization", cxxopts::value<int>()->default_value("10"));
 
     auto args = options.parse(argc, argv);
 
     std::cout << "to process sequence " << args["sequence"].as<fs::path>() << std::endl;
 
-    std::unique_ptr<ImageLoader> loader = std::make_unique<ImageLoader>(args["sequence"].as<fs::path>() / "rgb");
+    std::shared_ptr<ImageLoader> loader = std::make_shared<ImageLoader>(args["sequence"].as<fs::path>() / "rgb");
 
     auto intrinsics_path = fs::canonical(argv[0]).parent_path() / "res/intrinsics.json";
 
     Eigen::Matrix3f intrinsics = load_intrinsics(intrinsics_path, args["camera"].as<std::string>());
 
-    std::cout << "Loaded intrinsics matrix:\n" << intrinsics << std::endl;
+    std::cout << "intrinsics matrix:\n" << intrinsics << std::endl;
 
-    Odometer odometer(intrinsics);
+    auto odometer = std::make_unique<Odometer>(intrinsics, loader, args["temporal_baseline"].as<int>());
 
-    if (loader->size() < 2) throw std::runtime_error("Need at least two images to perform visual odometry.");
+    std::cout << "to start visual odometry" << std::endl;
 
-    auto image_a = loader->next();
-    auto image_b = loader->next();
+    odometer->initialize();
+    odometer->processFrames();
 
-    odometer.initialize(image_a, image_b);
-
-    while (loader->hasNext()) odometer.processFrame(loader->next());
-
-    auto rotations = odometer.getRotations();
-    auto translations = odometer.getTranslations();
+    auto rotations = odometer->getRotations();
+    auto translations = odometer->getTranslations();
 
     if (rotations.size() != translations.size()) {
         throw std::runtime_error("Mismatch between number of rotations and translations.");

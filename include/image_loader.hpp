@@ -11,15 +11,12 @@ namespace fs = std::filesystem;
 class ImageLoader {
 private:
     std::vector<fs::path> paths;
-    size_t current_index;
 
 public:
     ImageLoader(const fs::path& folder_path);
 
-    bool hasNext() const;
-    cv::Mat next();
+    cv::Mat operator[](size_t index) const;
     size_t size() const;
-    void reset();
 };
 
 #endif // IMAGE_LOADER_HPP
