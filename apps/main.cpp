@@ -55,10 +55,25 @@ int main(int argc, char *argv[])
 
     std::cout << "Loaded intrinsics matrix:\n" << intrinsics << std::endl;
 
-    while (loader->hasNext())
-    {
-        auto image = loader->next();
-        std::cout << "Loaded image of size: " << image.cols << " x " << image.rows << std::endl;
+    Odometer odometer(intrinsics);
+
+    if (loader->size() < 2) throw std::runtime_error("Need at least two images to perform visual odometry.");
+
+    auto image_a = loader->next();
+    auto image_b = loader->next();
+
+    odometer.initialize(image_a, image_b);
+
+    while (loader->hasNext()) odometer.processFrame(loader->next());
+
+    auto rotations = odometer.getRotations();
+    auto translations = odometer.getTranslations();
+
+    if (rotations.size() != translations.size()) {
+        throw std::runtime_error("Mismatch between number of rotations and translations.");
+    }
+    if (rotations.size() != loader->size()) {
+        throw std::runtime_error("Mismatch between number of poses and number of images.");
     }
     return 0;
 }

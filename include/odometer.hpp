@@ -13,6 +13,10 @@ protected:
 
 public:
     Odometer(Eigen::Matrix3f intrinsics);
+
     void initialize(const cv::Mat& frame_a, const cv::Mat& frame_b);
     void processFrame(const cv::Mat& image);
+
+    const std::vector<Eigen::Vector4f>& getRotations();
+    const std::vector<Eigen::Vector3f>& getTranslations();
 };
