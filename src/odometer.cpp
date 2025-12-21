@@ -5,15 +5,24 @@
 # include <indicators/progress_bar.hpp>
 # include "odometer.hpp"
 # include "image_loader.hpp"
+# include "feature_matcher.hpp"
+# include "feature_extractor.hpp"
+
 
 Odometer::Odometer(Eigen::Matrix3f intrinsics, std::shared_ptr<ImageLoader> loader, fs::path write_path, int temporal_baseline, int count_features):
-    is_initialized(false), intrinsics(intrinsics), loader(loader), write_path(write_path), temporal_baseline(temporal_baseline), count_features(count_features)
+    is_initialized(false), intrinsics(intrinsics), loader(loader), write_path(write_path), temporal_baseline(temporal_baseline)
 {
     if (loader->size() <= temporal_baseline) {
         throw std::invalid_argument("temporal_baseline must be at least 1");
     }
+    extractor = std::make_unique<Extractor>(count_features);
+
+    matcher = std::make_unique<Matcher>();
+
     std::filesystem::create_directories(write_path);
 }
+
+Odometer::~Odometer() = default;
 
 void Odometer::initialize() {
     is_initialized = true;
@@ -24,7 +33,17 @@ void Odometer::initialize() {
     rotations.emplace(0, Eigen::Quaternionf::Identity());
     translations.emplace(0, Eigen::Vector3f::Zero());
 
-    cv::Ptr<cv::SIFT> sift = cv::SIFT::create(2000, 3, 0.04, 10, 1.6, true);
+    std::vector<cv::KeyPoint> keypoints_a, keypoints_b;
+    cv::Mat descriptors_a, descriptors_b;
+
+    extractor->extract(image_a, keypoints_a, descriptors_a);
+    extractor->extract(image_b, keypoints_b, descriptors_b);
+
+    std::vector<cv::DMatch> matches;
+
+    matcher->match(descriptors_a, descriptors_b, matches);
+
+    std::cout << "Initial matches found: " << matches.size() << std::endl;
 
     rotations.emplace(temporal_baseline, Eigen::Quaternionf::Identity());
     translations.emplace(temporal_baseline, Eigen::Vector3f::Zero());
