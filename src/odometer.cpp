@@ -45,6 +45,14 @@ void Odometer::initialize() {
 
     std::cout << "Initial matches found: " << matches.size() << std::endl;
 
+    matcher->paint_matches(
+        image_a,
+        image_b,
+        keypoints_a,
+        keypoints_b,
+        matches,
+        write_path / "initial_matches.png"
+    );
     rotations.emplace(temporal_baseline, Eigen::Quaternionf::Identity());
     translations.emplace(temporal_baseline, Eigen::Vector3f::Zero());
 
