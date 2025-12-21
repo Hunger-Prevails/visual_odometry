@@ -8,3 +8,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_subdirectory(apps)
 add_subdirectory(src)
 add_subdirectory(tests)
+
+if(EXISTS ${CMAKE_SOURCE_DIR}/res)
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/res)
+    file(COPY ${CMAKE_SOURCE_DIR}/res/ DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/res/)
+endif()

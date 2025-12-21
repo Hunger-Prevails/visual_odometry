@@ -10,7 +10,7 @@
                 "shell": {
                     "executable": "cmd.exe",
                     "args": [
-                        "/k"
+                        "/c"
                     ]
                 }
             },
@@ -33,7 +33,7 @@
                 "shell": {
                     "executable": "cmd.exe",
                     "args": [
-                        "/k"
+                        "/c"
                     ]
                 }
             },
@@ -58,7 +58,7 @@
                 "shell": {
                     "executable": "cmd.exe",
                     "args": [
-                        "/k"
+                        "/c"
                     ]
                 }
             },

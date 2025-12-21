@@ -41,8 +41,10 @@ int main(int argc, char *argv[])
     cxxopts::Options options("visual-odometry", "options to configure visual odometry pipeline");
 
     options.add_options()("sequence", "Path to the image sequence to process", cxxopts::value<fs::path>());
+    options.add_options()("write_path", "Path to write outputs to", cxxopts::value<fs::path>()->default_value("outputs"));
     options.add_options()("camera", "Name of camera", cxxopts::value<std::string>()->default_value("default"));
     options.add_options()("temporal_baseline", "Number of frames between the two frames chosen for initialization", cxxopts::value<int>()->default_value("10"));
+    options.add_options()("count_features", "Maximum numbers of features to detect on a frame", cxxopts::value<int>()->default_value("2000"));
 
     auto args = options.parse(argc, argv);
 
@@ -50,13 +52,14 @@ int main(int argc, char *argv[])
 
     std::shared_ptr<ImageLoader> loader = std::make_shared<ImageLoader>(args["sequence"].as<fs::path>() / "rgb");
 
-    auto intrinsics_path = fs::canonical(argv[0]).parent_path() / "res/intrinsics.json";
+    auto intrinsics_path = fs::canonical(argv[0]).parent_path() / "../res/intrinsics.json";
+    auto write_path = fs::canonical(argv[0]).parent_path() / args["write_path"].as<fs::path>();
 
     Eigen::Matrix3f intrinsics = load_intrinsics(intrinsics_path, args["camera"].as<std::string>());
 
     std::cout << "to assume intrinsics matrix:\n" << intrinsics << std::endl;
 
-    auto odometer = std::make_unique<Odometer>(intrinsics, loader, args["temporal_baseline"].as<int>());
+    auto odometer = std::make_unique<Odometer>(intrinsics, loader, write_path, args["temporal_baseline"].as<int>(), args["count_features"].as<int>());
 
     std::cout << "to start visual odometry" << std::endl;
 

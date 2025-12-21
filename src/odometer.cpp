@@ -6,12 +6,13 @@
 # include "odometer.hpp"
 # include "image_loader.hpp"
 
-Odometer::Odometer(Eigen::Matrix3f intrinsics, std::shared_ptr<ImageLoader> loader, int temporal_baseline):
-    is_initialized(false), intrinsics(intrinsics), loader(loader), temporal_baseline(temporal_baseline)
+Odometer::Odometer(Eigen::Matrix3f intrinsics, std::shared_ptr<ImageLoader> loader, fs::path write_path, int temporal_baseline, int count_features):
+    is_initialized(false), intrinsics(intrinsics), loader(loader), write_path(write_path), temporal_baseline(temporal_baseline), count_features(count_features)
 {
     if (loader->size() <= temporal_baseline) {
         throw std::invalid_argument("temporal_baseline must be at least 1");
     }
+    std::filesystem::create_directories(write_path);
 }
 
 void Odometer::initialize() {
@@ -22,6 +23,8 @@ void Odometer::initialize() {
 
     rotations.emplace(0, Eigen::Quaternionf::Identity());
     translations.emplace(0, Eigen::Vector3f::Zero());
+
+    cv::Ptr<cv::SIFT> sift = cv::SIFT::create(2000, 3, 0.04, 10, 1.6, true);
 
     rotations.emplace(temporal_baseline, Eigen::Quaternionf::Identity());
     translations.emplace(temporal_baseline, Eigen::Vector3f::Zero());
