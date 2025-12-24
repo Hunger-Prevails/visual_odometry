@@ -11,7 +11,8 @@ class Matcher {
 public:
     Matcher();
 
-    void match(cv::Mat& descriptors_a, cv::Mat& descriptors_b, std::vector<cv::DMatch>& matches);
+    std::vector<cv::DMatch> match(cv::Mat& descriptors_a, cv::Mat& descriptors_b);
+    std::vector<cv::DMatch> match_knn(cv::Mat& descriptors_a, cv::Mat& descriptors_b, int n_neighbors = 2, float ratio_threshold = 0.75);
 
     void paint_matches(
         const cv::Mat& image_a,

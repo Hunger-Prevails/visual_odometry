@@ -39,11 +39,7 @@ void Odometer::initialize() {
     extractor->extract(image_a, keypoints_a, descriptors_a);
     extractor->extract(image_b, keypoints_b, descriptors_b);
 
-    std::vector<cv::DMatch> matches;
-
-    matcher->match(descriptors_a, descriptors_b, matches);
-
-    std::cout << "Initial matches found: " << matches.size() << std::endl;
+    auto matches = matcher->match_knn(descriptors_a, descriptors_b);
 
     matcher->paint_matches(
         image_a,
@@ -53,6 +49,12 @@ void Odometer::initialize() {
         matches,
         write_path / "initial_matches.png"
     );
+    std::vector<cv::Point2f> points_a, points_b;
+
+    for (const auto match: matches) {
+        points_a.push_back(keypoints_a[match.queryIdx].pt);
+        points_b.push_back(keypoints_b[match.trainIdx].pt);
+    }
     rotations.emplace(temporal_baseline, Eigen::Quaternionf::Identity());
     translations.emplace(temporal_baseline, Eigen::Vector3f::Zero());
 
