@@ -16,7 +16,7 @@ namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 
-Eigen::Matrix3f load_intrinsics(const fs::path& filepath, const std::string& camera) {
+Eigen::Matrix3d load_intrinsics(const fs::path& filepath, const std::string& camera) {
     std::ifstream file(filepath);
     if (!file.is_open()) {
         throw std::invalid_argument("Failed to open file: " + filepath.string());
@@ -26,11 +26,11 @@ Eigen::Matrix3f load_intrinsics(const fs::path& filepath, const std::string& cam
     file >> matrix_data;
     file.close();
 
-    Eigen::Matrix3f matrix;
+    Eigen::Matrix3d matrix;
 
     for (size_t i = 0; i < 3; ++i) {
         for (size_t j = 0; j < 3; ++j) {
-            matrix(i, j) = matrix_data[camera][i][j].get<float>();
+            matrix(i, j) = matrix_data[camera][i][j].get<double>();
         }
     }
     return matrix;
@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
     auto intrinsics_path = fs::canonical(argv[0]).parent_path() / "../res/intrinsics.json";
     auto write_path = fs::canonical(argv[0]).parent_path() / args["write_path"].as<fs::path>();
 
-    Eigen::Matrix3f intrinsics = load_intrinsics(intrinsics_path, args["camera"].as<std::string>());
+    auto intrinsics = load_intrinsics(intrinsics_path, args["camera"].as<std::string>());
 
     std::cout << "to assume intrinsics matrix:\n" << intrinsics << std::endl;
 

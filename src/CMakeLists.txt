@@ -16,5 +16,6 @@ target_link_libraries(
         opencv_features2d
         opencv_imgproc
         opencv_imgcodecs
+        opencv_calib3d
         indicators::indicators
 )

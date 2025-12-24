@@ -1,6 +1,8 @@
 # include <Eigen/Dense>
 # include <Eigen/Core>
 # include <opencv2/opencv.hpp>
+# include <opencv2/calib3d.hpp>
+# include <opencv2/core/eigen.hpp>
 # include <ranges>
 # include <indicators/progress_bar.hpp>
 # include "odometer.hpp"
@@ -9,7 +11,7 @@
 # include "feature_extractor.hpp"
 
 
-Odometer::Odometer(Eigen::Matrix3f intrinsics, std::shared_ptr<ImageLoader> loader, fs::path write_path, int temporal_baseline, int count_features):
+Odometer::Odometer(Eigen::Matrix3d intrinsics, std::shared_ptr<ImageLoader> loader, fs::path write_path, int temporal_baseline, int count_features):
     is_initialized(false), intrinsics(intrinsics), loader(loader), write_path(write_path), temporal_baseline(temporal_baseline)
 {
     if (loader->size() <= temporal_baseline) {
@@ -49,12 +51,36 @@ void Odometer::initialize() {
         matches,
         write_path / "initial_matches.png"
     );
-    std::vector<cv::Point2f> points_a, points_b;
 
-    for (const auto match: matches) {
-        points_a.push_back(keypoints_a[match.queryIdx].pt);
-        points_b.push_back(keypoints_b[match.trainIdx].pt);
+    auto [rotation, translation, mask] = computePose(keypoints_a, keypoints_b, matches);
+
+    std::vector<cv::DMatch> matches_inliers;
+
+    matches_inliers.reserve(cv::countNonZero(mask));
+
+    for (int i = 0; i < mask.rows; ++i) {
+        if (mask.at<uchar>(i)) {
+            matches_inliers.push_back(matches[i]);
+        }
     }
+
+    matcher->paint_matches(
+        image_a,
+        image_b,
+        keypoints_a,
+        keypoints_b,
+        matches_inliers,
+        write_path / "initial_matches_inliers.png"
+    );
+
+    auto landmarks = triangulate(
+        keypoints_a,
+        keypoints_b,
+        matches_inliers,
+        rotation,
+        translation
+    );
+
     rotations.emplace(temporal_baseline, Eigen::Quaternionf::Identity());
     translations.emplace(temporal_baseline, Eigen::Vector3f::Zero());
 
@@ -120,4 +146,91 @@ const std::vector<Eigen::Vector3f> Odometer::getTranslations() {
     std::ranges::copy(translations | std::views::values, std::back_inserter(result));
 
     return result;
+}
+
+std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> Odometer::keypoints_to_points(
+    const std::vector<cv::KeyPoint>& keypoints_a,
+    const std::vector<cv::KeyPoint>& keypoints_b,
+    const std::vector<cv::DMatch>& matches
+) {
+    std::vector<cv::Point2f> points_a, points_b;
+
+    for (const auto match: matches) {
+        points_a.push_back(keypoints_a[match.queryIdx].pt);
+        points_b.push_back(keypoints_b[match.trainIdx].pt);
+    }
+
+    return {points_a, points_b};
+}
+
+std::tuple<cv::Mat, cv::Mat, cv::Mat> Odometer::computePose(
+    const std::vector<cv::KeyPoint>& keypoints_a,
+    const std::vector<cv::KeyPoint>& keypoints_b,
+    const std::vector<cv::DMatch>& matches
+) {
+    auto [points_a, points_b] = keypoints_to_points(keypoints_a, keypoints_b, matches);
+
+    cv::Mat mask;
+    cv::Mat intrinsics;
+    cv::eigen2cv(this->intrinsics, intrinsics);
+    cv::Mat essentials = cv::findEssentialMat(points_a, points_b, intrinsics, cv::RANSAC, 0.999, 1.0, mask);
+
+    if (essentials.empty()) {
+        throw std::invalid_argument("Cannot compute Essential Matrix from given points");
+    }
+
+    cv::Mat rotation;
+    cv::Mat translation;
+
+    int inliers = cv::recoverPose(essentials, points_a, points_b, intrinsics, rotation, translation, mask);
+
+    std::cout << "Found " << inliers << " inlier keypoints" << std::endl;
+
+    return {
+        rotation, translation, mask
+    };
+}
+
+std::vector<cv::Point3f> Odometer::triangulate(
+    const std::vector<cv::KeyPoint>& keypoints_a,
+    const std::vector<cv::KeyPoint>& keypoints_b,
+    const std::vector<cv::DMatch>& matches,
+    const cv::Mat& rotation,
+    const cv::Mat& translation
+) {
+    auto [points_a, points_b] = keypoints_to_points(keypoints_a, keypoints_b, matches);
+
+    cv::Mat intrinsics;
+    cv::eigen2cv(this->intrinsics, intrinsics);
+
+    cv::Mat projection_a = cv::Mat::zeros(3, 4, intrinsics.type());
+
+    intrinsics.copyTo(projection_a(cv::Rect(0, 0, 3, 3)));
+
+    cv::Mat extrinsics;
+    cv::hconcat(rotation, translation, extrinsics);
+
+    auto projection_b = intrinsics * extrinsics;
+
+    cv::Mat points_homogeneous;
+    cv::triangulatePoints(projection_a, projection_b, points_a, points_b, points_homogeneous);
+
+    std::vector<cv::Point3f> landmarks;
+
+    landmarks.reserve(points_homogeneous.cols);
+
+    for (int i = 0; i < points_homogeneous.cols; i ++) {
+        float w = points_homogeneous.at<float>(3, i);
+
+        if (std::abs(w) < 1e-5) continue;
+
+        auto x = points_homogeneous.at<float>(0, i) / w;
+        auto y = points_homogeneous.at<float>(1, i) / w;
+        auto z = points_homogeneous.at<float>(2, i) / w;
+
+        if (z > 0) landmarks.push_back({x, y, z});
+    }
+    std::cout << "Was able to triangulate " << landmarks.size() << " landmarks" << std::endl;
+
+    return landmarks;
 }
