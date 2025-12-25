@@ -5,13 +5,24 @@
 # include <Eigen/Dense>
 # include <Eigen/Core>
 # include <opencv2/opencv.hpp>
-# include "keyframe.hpp"
 
 namespace fs = std::filesystem;
 
 class Matcher;
 class ImageLoader;
 class Extractor;
+
+
+class Keyframe {
+public:
+    size_t frame;
+
+    std::vector<cv::KeyPoint> keypoints;
+    cv::Mat descriptors;
+
+    std::map<int, int> feature_to_landmark;
+};
+
 
 class Odometer {
 protected:
@@ -25,8 +36,8 @@ protected:
     std::unique_ptr<Extractor> extractor;
     std::unique_ptr<Matcher> matcher;
 
-    std::map<int, Eigen::Quaternionf> rotations;
-    std::map<int, Eigen::Vector3f> translations;
+    std::map<int, Eigen::Quaterniond> rotations;
+    std::map<int, Eigen::Vector3d> translations;
 
     std::queue<std::shared_ptr<Keyframe>> keyframes;
     std::vector<cv::Point3f> landmarks;
@@ -39,8 +50,8 @@ public:
     void processFrame(int index);
     void processFrames();
 
-    const std::vector<Eigen::Quaternionf> getRotations() const;
-    const std::vector<Eigen::Vector3f> getTranslations() const;
+    const std::vector<Eigen::Quaterniond> getRotations() const;
+    const std::vector<Eigen::Vector3d> getTranslations() const;
 
 protected:
     std::tuple<cv::Mat, cv::Mat, cv::Mat> computePose(
@@ -61,5 +72,14 @@ protected:
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches
+    ) const;
+
+    std::tuple<std::vector<cv::Point3f>, Eigen::Quaterniond, Eigen::Vector3d> bundle_adjustment(
+        const std::vector<cv::Point3f>& landmarks,
+        const std::vector<cv::Point2f>& keypoints_a,
+        const std::vector<cv::Point2f>& keypoints_b,
+        const std::vector<cv::DMatch>& matches,
+        const Eigen::Quaterniond& rotation,
+        const Eigen::Vector3d& translation
     ) const;
 };

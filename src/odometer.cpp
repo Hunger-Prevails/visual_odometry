@@ -6,7 +6,6 @@
 # include <ranges>
 # include <indicators/progress_bar.hpp>
 # include "odometer.hpp"
-# include "keyframe.hpp"
 # include "image_loader.hpp"
 # include "feature_matcher.hpp"
 # include "feature_extractor.hpp"
@@ -33,8 +32,8 @@ void Odometer::initialize() {
     auto image_a = loader->operator[](0);
     auto image_b = loader->operator[](temporal_baseline);
 
-    rotations.emplace(0, Eigen::Quaternionf::Identity());
-    translations.emplace(0, Eigen::Vector3f::Zero());
+    rotations.emplace(0, Eigen::Quaterniond::Identity());
+    translations.emplace(0, Eigen::Vector3d::Zero());
 
     std::vector<cv::KeyPoint> keypoints_a, keypoints_b;
     cv::Mat descriptors_a, descriptors_b;
@@ -82,8 +81,8 @@ void Odometer::initialize() {
         translation
     );
 
-    rotations.emplace(temporal_baseline, Eigen::Quaternionf::Identity());
-    translations.emplace(temporal_baseline, Eigen::Vector3f::Zero());
+    rotations.emplace(temporal_baseline, Eigen::Quaterniond::Identity());
+    translations.emplace(temporal_baseline, Eigen::Vector3d::Zero());
 
     std::cout << "Completes initialization" << std::endl;
 }
@@ -94,8 +93,8 @@ void Odometer::processFrame(int index) {
     }
     auto image = loader->operator[](index);
 
-    rotations.emplace(index, Eigen::Quaternionf::Identity());
-    translations.emplace(index, Eigen::Vector3f::Zero());
+    rotations.emplace(index, Eigen::Quaterniond::Identity());
+    translations.emplace(index, Eigen::Vector3d::Zero());
 }
 
 void Odometer::processFrames() {
@@ -131,8 +130,8 @@ void Odometer::processFrames() {
     std::cout << "Completes visual odometry" << std::endl;
 }
 
-const std::vector<Eigen::Quaternionf> Odometer::getRotations() const {
-    std::vector<Eigen::Quaternionf> result;
+const std::vector<Eigen::Quaterniond> Odometer::getRotations() const {
+    std::vector<Eigen::Quaterniond> result;
     result.reserve(rotations.size());
 
     std::ranges::copy(rotations | std::views::values, std::back_inserter(result));
@@ -140,8 +139,8 @@ const std::vector<Eigen::Quaternionf> Odometer::getRotations() const {
     return result;
 }
 
-const std::vector<Eigen::Vector3f> Odometer::getTranslations() const {
-    std::vector<Eigen::Vector3f> result;
+const std::vector<Eigen::Vector3d> Odometer::getTranslations() const {
+    std::vector<Eigen::Vector3d> result;
     result.reserve(translations.size());
 
     std::ranges::copy(translations | std::views::values, std::back_inserter(result));
@@ -234,4 +233,17 @@ std::vector<cv::Point3f> Odometer::triangulate(
     std::cout << "Was able to triangulate " << landmarks.size() << " landmarks" << std::endl;
 
     return landmarks;
+}
+
+std::tuple<std::vector<cv::Point3f>, Eigen::Quaterniond, Eigen::Vector3d> Odometer::bundle_adjustment(
+    const std::vector<cv::Point3f>& landmarks,
+    const std::vector<cv::Point2f>& keypoints_a,
+    const std::vector<cv::Point2f>& keypoints_b,
+    const std::vector<cv::DMatch>& matches,
+    const Eigen::Quaterniond& rotation,
+    const Eigen::Vector3d& translation
+) const {
+    return {
+        landmarks, rotation, translation
+    };
 }
