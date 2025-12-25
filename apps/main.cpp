@@ -44,6 +44,7 @@ int main(int argc, char *argv[])
     options.add_options()("write_path", "Path to write outputs to", cxxopts::value<fs::path>()->default_value("outputs"));
     options.add_options()("camera", "Name of camera", cxxopts::value<std::string>()->default_value("default"));
     options.add_options()("temporal_baseline", "Number of frames between the two frames chosen for initialization", cxxopts::value<int>()->default_value("10"));
+    options.add_options()("n_keyframes", "Number of keyframes to maintain in memory", cxxopts::value<int>()->default_value("2"));
     options.add_options()("count_features", "Maximum numbers of features to detect on a frame", cxxopts::value<int>()->default_value("2000"));
 
     auto args = options.parse(argc, argv);
@@ -59,7 +60,7 @@ int main(int argc, char *argv[])
 
     std::cout << "to assume intrinsics matrix:\n" << intrinsics << std::endl;
 
-    auto odometer = std::make_unique<Odometer>(intrinsics, loader, write_path, args["temporal_baseline"].as<int>(), args["count_features"].as<int>());
+    auto odometer = std::make_unique<Odometer>(intrinsics, loader, write_path, args["temporal_baseline"].as<int>(), args["n_keyframes"].as<int>(), args["count_features"].as<int>());
 
     std::cout << "to start visual odometry" << std::endl;
 

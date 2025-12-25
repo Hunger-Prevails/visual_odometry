@@ -6,13 +6,14 @@
 # include <ranges>
 # include <indicators/progress_bar.hpp>
 # include "odometer.hpp"
+# include "keyframe.hpp"
 # include "image_loader.hpp"
 # include "feature_matcher.hpp"
 # include "feature_extractor.hpp"
 
 
-Odometer::Odometer(Eigen::Matrix3d intrinsics, std::shared_ptr<ImageLoader> loader, fs::path write_path, int temporal_baseline, int count_features):
-    is_initialized(false), intrinsics(intrinsics), loader(loader), write_path(write_path), temporal_baseline(temporal_baseline)
+Odometer::Odometer(Eigen::Matrix3d intrinsics, std::shared_ptr<ImageLoader> loader, fs::path write_path, int temporal_baseline, int n_keyframes, int count_features):
+    is_initialized(false), intrinsics(intrinsics), loader(loader), write_path(write_path), temporal_baseline(temporal_baseline), n_keyframes(n_keyframes)
 {
     if (loader->size() <= temporal_baseline) {
         throw std::invalid_argument("temporal_baseline must be at least 1");
@@ -130,7 +131,7 @@ void Odometer::processFrames() {
     std::cout << "Completes visual odometry" << std::endl;
 }
 
-const std::vector<Eigen::Quaternionf> Odometer::getRotations() {
+const std::vector<Eigen::Quaternionf> Odometer::getRotations() const {
     std::vector<Eigen::Quaternionf> result;
     result.reserve(rotations.size());
 
@@ -139,7 +140,7 @@ const std::vector<Eigen::Quaternionf> Odometer::getRotations() {
     return result;
 }
 
-const std::vector<Eigen::Vector3f> Odometer::getTranslations() {
+const std::vector<Eigen::Vector3f> Odometer::getTranslations() const {
     std::vector<Eigen::Vector3f> result;
     result.reserve(translations.size());
 
@@ -152,7 +153,7 @@ std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> Odometer::keypoin
     const std::vector<cv::KeyPoint>& keypoints_a,
     const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches
-) {
+) const {
     std::vector<cv::Point2f> points_a, points_b;
 
     for (const auto match: matches) {
@@ -167,7 +168,7 @@ std::tuple<cv::Mat, cv::Mat, cv::Mat> Odometer::computePose(
     const std::vector<cv::KeyPoint>& keypoints_a,
     const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches
-) {
+) const {
     auto [points_a, points_b] = keypoints_to_points(keypoints_a, keypoints_b, matches);
 
     cv::Mat mask;
@@ -197,7 +198,7 @@ std::vector<cv::Point3f> Odometer::triangulate(
     const std::vector<cv::DMatch>& matches,
     const cv::Mat& rotation,
     const cv::Mat& translation
-) {
+) const {
     auto [points_a, points_b] = keypoints_to_points(keypoints_a, keypoints_b, matches);
 
     cv::Mat intrinsics;
