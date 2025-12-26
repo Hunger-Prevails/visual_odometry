@@ -4,11 +4,13 @@
 # include <opencv2/calib3d.hpp>
 # include <opencv2/core/eigen.hpp>
 # include <ranges>
+# include <ceres/ceres.h>
 # include <indicators/progress_bar.hpp>
 # include "odometer.hpp"
 # include "image_loader.hpp"
 # include "feature_matcher.hpp"
 # include "feature_extractor.hpp"
+# include "cost_functions.hpp"
 
 
 Odometer::Odometer(Eigen::Matrix3d intrinsics, std::shared_ptr<ImageLoader> loader, fs::path write_path, int temporal_baseline, int n_keyframes, int count_features):
@@ -81,8 +83,20 @@ void Odometer::initialize() {
         translation
     );
 
-    rotations.emplace(temporal_baseline, Eigen::Quaterniond::Identity());
-    translations.emplace(temporal_baseline, Eigen::Vector3d::Zero());
+    auto rotation_eigen = to_eigen_rotation(rotation);
+    auto translation_eigen = to_eigen_translation(translation);
+
+    bundle_adjustment(
+        keypoints_a,
+        keypoints_b,
+        matches_inliers,
+        landmarks,
+        rotation_eigen,
+        translation_eigen
+    );
+
+    rotations.emplace(temporal_baseline, rotation_eigen);
+    translations.emplace(temporal_baseline, translation_eigen);
 
     std::cout << "Completes initialization" << std::endl;
 }
@@ -191,7 +205,7 @@ std::tuple<cv::Mat, cv::Mat, cv::Mat> Odometer::computePose(
     };
 }
 
-std::vector<cv::Point3f> Odometer::triangulate(
+std::vector<Eigen::Vector3d> Odometer::triangulate(
     const std::vector<cv::KeyPoint>& keypoints_a,
     const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches,
@@ -215,7 +229,7 @@ std::vector<cv::Point3f> Odometer::triangulate(
     cv::Mat points_homogeneous;
     cv::triangulatePoints(projection_a, projection_b, points_a, points_b, points_homogeneous);
 
-    std::vector<cv::Point3f> landmarks;
+    std::vector<Eigen::Vector3d> landmarks;
 
     landmarks.reserve(points_homogeneous.cols);
 
@@ -235,15 +249,59 @@ std::vector<cv::Point3f> Odometer::triangulate(
     return landmarks;
 }
 
-std::tuple<std::vector<cv::Point3f>, Eigen::Quaterniond, Eigen::Vector3d> Odometer::bundle_adjustment(
-    const std::vector<cv::Point3f>& landmarks,
-    const std::vector<cv::Point2f>& keypoints_a,
-    const std::vector<cv::Point2f>& keypoints_b,
+Eigen::Quaterniond Odometer::to_eigen_rotation(const cv::Mat& rotation) const {
+    Eigen::Matrix3d rotation_eigen;
+    cv::cv2eigen(rotation, rotation_eigen);
+    return Eigen::Quaterniond(rotation_eigen);
+}
+
+Eigen::Vector3d Odometer::to_eigen_translation(const cv::Mat& translation) const {
+    Eigen::Vector3d translation_eigen;
+    cv::cv2eigen(translation, translation_eigen);
+    return translation_eigen;
+}
+
+void Odometer::bundle_adjustment(
+    const std::vector<cv::KeyPoint>& keypoints_a,
+    const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches,
-    const Eigen::Quaterniond& rotation,
-    const Eigen::Vector3d& translation
+    std::vector<Eigen::Vector3d>& landmarks,
+    Eigen::Quaterniond& rotation,
+    Eigen::Vector3d& translation
 ) const {
-    return {
-        landmarks, rotation, translation
-    };
+    if (landmarks.size() != matches.size()) {
+        throw std::invalid_argument("Number of landmarks must be equal to number of matches");
+    }
+
+    auto [points_a, points_b] = keypoints_to_points(keypoints_a, keypoints_b, matches);
+
+    auto problem = ceres::Problem();
+    auto loss_function = new ceres::HuberLoss(1.0);
+
+    problem.AddParameterBlock(rotation.coeffs().data(), 4, new ceres::EigenQuaternionManifold());
+    problem.AddParameterBlock(translation.data(), 3, new ceres::SphereManifold<3>());
+
+    for (size_t i = 0; i < matches.size(); ++i) {
+        problem.AddResidualBlock(
+            new ceres::AutoDiffCostFunction<ProjectionError, 2, 3>(new ProjectionError(points_a[i], intrinsics)),
+            loss_function,
+            landmarks[i].data()
+        );
+
+        problem.AddResidualBlock(
+            new ceres::AutoDiffCostFunction<ProjectionErrorFull, 2, 3, 4, 3>(new ProjectionErrorFull(points_a[i], intrinsics)),
+            loss_function,
+            landmarks[i].data(),
+            rotation.coeffs().data(),
+            translation.data()
+        );
+    }
+
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    options.minimizer_progress_to_stdout = true;
+    options.max_num_iterations = 100;
+
+    ceres::Solver::Summary summary;
+    ceres::Solve(options, &problem, &summary);
 }

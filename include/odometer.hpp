@@ -60,7 +60,7 @@ protected:
         const std::vector<cv::DMatch>& matches
     ) const;
 
-    std::vector<cv::Point3f> triangulate(
+    std::vector<Eigen::Vector3d> triangulate(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches,
@@ -74,12 +74,15 @@ protected:
         const std::vector<cv::DMatch>& matches
     ) const;
 
-    std::tuple<std::vector<cv::Point3f>, Eigen::Quaterniond, Eigen::Vector3d> bundle_adjustment(
-        const std::vector<cv::Point3f>& landmarks,
-        const std::vector<cv::Point2f>& keypoints_a,
-        const std::vector<cv::Point2f>& keypoints_b,
+    void bundle_adjustment(
+        const std::vector<cv::KeyPoint>& keypoints_a,
+        const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches,
-        const Eigen::Quaterniond& rotation,
-        const Eigen::Vector3d& translation
+        std::vector<Eigen::Vector3d>& landmarks,
+        Eigen::Quaterniond& rotation,
+        Eigen::Vector3d& translation
     ) const;
+
+    Eigen::Quaterniond to_eigen_rotation(const cv::Mat& rotation) const;
+    Eigen::Vector3d to_eigen_translation(const cv::Mat& translation) const;
 };
