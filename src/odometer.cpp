@@ -13,11 +13,25 @@
 # include "cost_functions.hpp"
 
 
-Odometer::Odometer(Eigen::Matrix3d intrinsics, std::shared_ptr<ImageLoader> loader, fs::path write_path, int temporal_baseline, int n_keyframes, int count_features):
-    is_initialized(false), intrinsics(intrinsics), loader(loader), write_path(write_path), temporal_baseline(temporal_baseline), n_keyframes(n_keyframes)
+Odometer::Odometer(
+    Eigen::Matrix3d intrinsics,
+    std::shared_ptr<ImageLoader> loader,
+    fs::path write_path,
+    int temporal_baseline,
+    int n_keyframes,
+    int count_features,
+    float function_tolerance
+):
+    is_initialized(false),
+    intrinsics(intrinsics),
+    loader(loader),
+    write_path(write_path),
+    temporal_baseline(temporal_baseline),
+    n_keyframes(n_keyframes),
+    function_tolerance(function_tolerance)
 {
     if (loader->size() <= temporal_baseline) {
-        throw std::invalid_argument("temporal_baseline must be at least 1");
+        throw std::invalid_argument("there has to be at least as many frames as the temporal_baseline");
     }
     extractor = std::make_unique<Extractor>(count_features);
 
@@ -27,6 +41,26 @@ Odometer::Odometer(Eigen::Matrix3d intrinsics, std::shared_ptr<ImageLoader> load
 }
 
 Odometer::~Odometer() = default;
+
+std::tuple<std::map<int, int>, std::map<int, int>, std::vector<cv::DMatch>> Odometer::create_map(
+    const std::vector<cv::DMatch>& matches, const cv::Mat& mask
+) const {
+    std::map<int, int> map_a;
+    std::map<int, int> map_b;
+    std::vector<cv::DMatch> matches_inliers;
+
+    for (size_t i = 0; i < matches.size(); ++i) {
+        if (!mask.at<uchar>(i)) continue;
+
+        const auto& match = matches[i];
+
+        map_a.emplace(match.queryIdx, static_cast<int>(i));
+        map_b.emplace(match.trainIdx, static_cast<int>(i));
+
+        matches_inliers.push_back(match);
+    }
+    return {map_a, map_b, matches_inliers};
+}
 
 void Odometer::initialize() {
     is_initialized = true;
@@ -56,15 +90,7 @@ void Odometer::initialize() {
 
     auto [rotation, translation, mask] = computePose(keypoints_a, keypoints_b, matches);
 
-    std::vector<cv::DMatch> matches_inliers;
-
-    matches_inliers.reserve(cv::countNonZero(mask));
-
-    for (int i = 0; i < mask.rows; ++i) {
-        if (mask.at<uchar>(i)) {
-            matches_inliers.push_back(matches[i]);
-        }
-    }
+    auto [map_a, map_b, matches_inliers] = create_map(matches, mask);
 
     matcher->paint_matches(
         image_a,
@@ -94,6 +120,9 @@ void Odometer::initialize() {
         rotation_eigen,
         translation_eigen
     );
+    this->landmarks = std::move(landmarks);
+    this->keyframes.push(std::make_shared<Keyframe>(0, keypoints_a, descriptors_a, map_a));
+    this->keyframes.push(std::make_shared<Keyframe>(temporal_baseline, keypoints_b, descriptors_b, map_b));
 
     rotations.emplace(temporal_baseline, rotation_eigen);
     translations.emplace(temporal_baseline, translation_eigen);
@@ -244,8 +273,9 @@ std::vector<Eigen::Vector3d> Odometer::triangulate(
 
         if (z > 0) landmarks.push_back({x, y, z});
     }
-    std::cout << "Was able to triangulate " << landmarks.size() << " landmarks" << std::endl;
-
+    if (landmarks.size() != matches.size()) {
+        throw std::runtime_error("Triangulation was not possible for some matches.");
+    }
     return landmarks;
 }
 
@@ -298,9 +328,10 @@ void Odometer::bundle_adjustment(
     }
 
     ceres::Solver::Options options;
+
     options.linear_solver_type = ceres::DENSE_SCHUR;
     options.minimizer_progress_to_stdout = true;
-    options.max_num_iterations = 100;
+    options.function_tolerance = function_tolerance;
 
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);

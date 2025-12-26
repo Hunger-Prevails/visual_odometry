@@ -27,9 +27,12 @@ public:
 class Odometer {
 protected:
     bool is_initialized;
+
+    fs::path write_path;
+
     int n_keyframes;
     int temporal_baseline;
-    fs::path write_path;
+    float function_tolerance;
 
     Eigen::Matrix3d intrinsics;
     std::shared_ptr<ImageLoader> loader;
@@ -40,10 +43,18 @@ protected:
     std::map<int, Eigen::Vector3d> translations;
 
     std::queue<std::shared_ptr<Keyframe>> keyframes;
-    std::vector<cv::Point3f> landmarks;
+    std::vector<Eigen::Vector3d> landmarks;
 
 public:
-    Odometer(Eigen::Matrix3d intrinsics, std::shared_ptr<ImageLoader> loader, fs::path write_path, int temporal_baseline = 10, int n_keyframes = 2, int count_features = 2000);
+    Odometer(
+        Eigen::Matrix3d intrinsics,
+        std::shared_ptr<ImageLoader> loader,
+        fs::path write_path,
+        int temporal_baseline = 10,
+        int n_keyframes = 2,
+        int count_features = 2000,
+        float function_tolerance = 1e-3
+    );
     ~Odometer();
 
     void initialize();
@@ -54,6 +65,10 @@ public:
     const std::vector<Eigen::Vector3d> getTranslations() const;
 
 protected:
+    std::tuple<std::map<int, int>, std::map<int, int>, std::vector<cv::DMatch>> create_map(
+        const std::vector<cv::DMatch>& matches, const cv::Mat& mask
+    ) const;
+
     std::tuple<cv::Mat, cv::Mat, cv::Mat> computePose(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
