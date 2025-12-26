@@ -11,6 +11,7 @@
 # include "feature_matcher.hpp"
 # include "feature_extractor.hpp"
 # include "cost_functions.hpp"
+# include "viz_tools.hpp"
 
 
 Odometer::Odometer(
@@ -54,8 +55,8 @@ std::tuple<std::map<int, int>, std::map<int, int>, std::vector<cv::DMatch>> Odom
 
         const auto& match = matches[i];
 
-        map_a.emplace(match.queryIdx, static_cast<int>(i));
-        map_b.emplace(match.trainIdx, static_cast<int>(i));
+        map_a.emplace(match.queryIdx, static_cast<int>(matches_inliers.size()));
+        map_b.emplace(match.trainIdx, static_cast<int>(matches_inliers.size()));
 
         matches_inliers.push_back(match);
     }
@@ -79,7 +80,7 @@ void Odometer::initialize() {
 
     auto matches = matcher->match_knn(descriptors_a, descriptors_b);
 
-    matcher->paint_matches(
+    paint_matches(
         image_a,
         image_b,
         keypoints_a,
@@ -92,7 +93,7 @@ void Odometer::initialize() {
 
     auto [map_a, map_b, matches_inliers] = create_map(matches, mask);
 
-    matcher->paint_matches(
+    paint_matches(
         image_a,
         image_b,
         keypoints_a,
@@ -112,6 +113,17 @@ void Odometer::initialize() {
     auto rotation_eigen = to_eigen_rotation(rotation);
     auto translation_eigen = to_eigen_translation(translation);
 
+    paint_projections(
+        image_b,
+        keypoints_b,
+        landmarks,
+        map_b,
+        intrinsics,
+        rotation_eigen,
+        translation_eigen,
+        write_path / "projections_b_triangulate.png"
+    );
+
     bundle_adjustment(
         keypoints_a,
         keypoints_b,
@@ -120,6 +132,18 @@ void Odometer::initialize() {
         rotation_eigen,
         translation_eigen
     );
+
+    paint_projections(
+        image_b,
+        keypoints_b,
+        landmarks,
+        map_b,
+        intrinsics,
+        rotation_eigen,
+        translation_eigen,
+        write_path / "projections_b_bundle_adjustment.png"
+    );
+
     this->landmarks = std::move(landmarks);
     this->keyframes.push(std::make_shared<Keyframe>(0, keypoints_a, descriptors_a, map_a));
     this->keyframes.push(std::make_shared<Keyframe>(temporal_baseline, keypoints_b, descriptors_b, map_b));
@@ -227,7 +251,7 @@ std::tuple<cv::Mat, cv::Mat, cv::Mat> Odometer::computePose(
 
     int inliers = cv::recoverPose(essentials, points_a, points_b, intrinsics, rotation, translation, mask);
 
-    std::cout << "Found " << inliers << " inlier keypoints" << std::endl;
+    std::cout << "Found " << inliers << " inlier keypoint matches" << std::endl;
 
     return {
         rotation, translation, mask
@@ -319,7 +343,7 @@ void Odometer::bundle_adjustment(
         );
 
         problem.AddResidualBlock(
-            new ceres::AutoDiffCostFunction<ProjectionErrorFull, 2, 3, 4, 3>(new ProjectionErrorFull(points_a[i], intrinsics)),
+            new ceres::AutoDiffCostFunction<ProjectionErrorFull, 2, 3, 4, 3>(new ProjectionErrorFull(points_b[i], intrinsics)),
             loss_function,
             landmarks[i].data(),
             rotation.coeffs().data(),

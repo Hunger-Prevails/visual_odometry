@@ -1,6 +1,7 @@
 # include <opencv2/opencv.hpp>
 # include <opencv2/features2d.hpp>
 # include <vector>
+# include <unordered_map>
 # include "feature_matcher.hpp"
 
 Matcher::Matcher() {
@@ -19,6 +20,27 @@ std::vector<cv::DMatch> Matcher::match(cv::Mat& descriptors_a, cv::Mat& descript
     matcher->match(descriptors_a, descriptors_b, matches);
 
     return matches;
+}
+
+std::vector<cv::DMatch> Matcher::enforce_bijection(const std::vector<cv::DMatch>& matches) {
+    std::unordered_map<int, int> registry;
+    std::vector<cv::DMatch> matches_bijective;
+
+    for (int i = 0; i < matches.size(); i ++) {
+        int t_idx = matches[i].trainIdx;
+
+        if (registry.find(t_idx) == registry.end()) {
+            registry.emplace(t_idx, i);
+        }
+        else if (matches[i].distance < matches[registry[t_idx]].distance) {
+            registry[t_idx] = i;
+        }
+    }
+
+    for (auto [t_idx, match_idx]: registry) {
+        matches_bijective.push_back(matches[match_idx]);
+    }
+    return matches_bijective;
 }
 
 std::vector<cv::DMatch> Matcher::match_knn(cv::Mat& descriptors_a, cv::Mat& descriptors_b, int n_neighbors, float ratio_threshold) {
@@ -46,32 +68,11 @@ std::vector<cv::DMatch> Matcher::match_knn(cv::Mat& descriptors_a, cv::Mat& desc
             }
         }
     }
-    std::cout << "To keep " << matches.size() << " good matches after ratio test" << std::endl;
+    std::cout << "To keep " << matches.size() << " matches after ratio test" << std::endl;
 
-    return matches;
-}
+    auto matches_bijective = enforce_bijection(matches);
 
+    std::cout << "To keep " << matches_bijective.size() << " bijective matches after bijection enforcement" << std::endl;
 
-void Matcher::paint_matches(
-    const cv::Mat& image_a,
-    const cv::Mat& image_b,
-    const std::vector<cv::KeyPoint>& keypoints_a,
-    const std::vector<cv::KeyPoint>& keypoints_b,
-    const std::vector<cv::DMatch>& matches,
-    const fs::path& write_path
-) {
-    cv::Mat dest;
-    cv::drawMatches(
-        image_a,
-        keypoints_a,
-        image_b,
-        keypoints_b,
-        matches,
-        dest,
-        cv::Scalar(0, 128, 0),
-        cv::Scalar(128, 0, 0),
-        std::vector<char>(),
-        cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS | cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS
-    );
-    cv::imwrite(write_path.string(), dest);
+    return matches_bijective;
 }

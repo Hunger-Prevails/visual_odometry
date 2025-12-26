@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
     options.add_options()("temporal_baseline", "Number of frames between the two frames chosen for initialization", cxxopts::value<int>()->default_value("10"));
     options.add_options()("n_keyframes", "Number of keyframes to maintain in memory", cxxopts::value<int>()->default_value("2"));
     options.add_options()("count_features", "Maximum numbers of features to detect on a frame", cxxopts::value<int>()->default_value("2000"));
-    options.add_options()("function_tolerance", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-3"));
+    options.add_options()("function_tolerance", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-4"));
 
     auto args = options.parse(argc, argv);
 
