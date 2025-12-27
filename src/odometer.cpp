@@ -72,11 +72,8 @@ void Odometer::initialize() {
     rotations.emplace(0, Eigen::Quaterniond::Identity());
     translations.emplace(0, Eigen::Vector3d::Zero());
 
-    std::vector<cv::KeyPoint> keypoints_a, keypoints_b;
-    cv::Mat descriptors_a, descriptors_b;
-
-    extractor->extract(image_a, keypoints_a, descriptors_a);
-    extractor->extract(image_b, keypoints_b, descriptors_b);
+    auto [keypoints_a, descriptors_a] = extractor->extract(image_a);
+    auto [keypoints_b, descriptors_b] = extractor->extract(image_b);
 
     auto matches = matcher->match_knn(descriptors_a, descriptors_b);
 
@@ -159,6 +156,9 @@ void Odometer::processFrame(int index) {
         throw std::runtime_error("Call initialize() with two frames before processing frames.");
     }
     auto image = loader->operator[](index);
+    auto keyframe = keyframes.back();
+
+    auto [keypoints, descriptors] = extractor->extract(image);
 
     rotations.emplace(index, Eigen::Quaterniond::Identity());
     translations.emplace(index, Eigen::Vector3d::Zero());

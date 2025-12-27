@@ -7,5 +7,5 @@ class Extractor {
 
 public:
     Extractor(int count_features);
-    void extract(cv::Mat& image, std::vector<cv::KeyPoint>& keypoints, cv::Mat& descriptors);
+    std::pair<std::vector<cv::KeyPoint>, cv::Mat> extract(cv::Mat& image);
 };
