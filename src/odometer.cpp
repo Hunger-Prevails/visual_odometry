@@ -21,6 +21,7 @@ Odometer::Odometer(
     int temporal_baseline,
     int n_keyframes,
     int count_features,
+    float test_ratio,
     float function_tolerance
 ):
     is_initialized(false),
@@ -36,7 +37,7 @@ Odometer::Odometer(
     }
     extractor = std::make_unique<Extractor>(count_features);
 
-    matcher = std::make_unique<Matcher>();
+    matcher = std::make_unique<Matcher>(test_ratio);
 
     std::filesystem::create_directories(write_path);
 }
@@ -159,6 +160,8 @@ void Odometer::processFrame(int index) {
     auto keyframe = keyframes.back();
 
     auto [keypoints, descriptors] = extractor->extract(image);
+
+    auto matches = matcher->match_knn(keyframe->descriptors, descriptors);
 
     rotations.emplace(index, Eigen::Quaterniond::Identity());
     translations.emplace(index, Eigen::Vector3d::Zero());

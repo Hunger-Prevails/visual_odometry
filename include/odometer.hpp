@@ -53,6 +53,7 @@ public:
         int temporal_baseline = 10,
         int n_keyframes = 2,
         int count_features = 2000,
+        float test_ratio = 0.75,
         float function_tolerance = 1e-3
     );
     ~Odometer();

@@ -4,7 +4,9 @@
 # include <unordered_map>
 # include "feature_matcher.hpp"
 
-Matcher::Matcher() {
+const int Matcher::n_neighbors(2);
+
+Matcher::Matcher(float test_ratio): test_ratio(test_ratio) {
     matcher = cv::FlannBasedMatcher::create();
 }
 
@@ -43,7 +45,7 @@ std::vector<cv::DMatch> Matcher::enforce_bijection(const std::vector<cv::DMatch>
     return matches_bijective;
 }
 
-std::vector<cv::DMatch> Matcher::match_knn(cv::Mat& descriptors_a, cv::Mat& descriptors_b, int n_neighbors, float ratio_threshold) {
+std::vector<cv::DMatch> Matcher::match_knn(cv::Mat& descriptors_a, cv::Mat& descriptors_b) {
     std::vector<std::vector<cv::DMatch>> matches_knn;
 
     if (descriptors_a.type() != CV_32F) {
@@ -52,18 +54,18 @@ std::vector<cv::DMatch> Matcher::match_knn(cv::Mat& descriptors_a, cv::Mat& desc
     if (descriptors_b.type() != CV_32F) {
         descriptors_b.convertTo(descriptors_b, CV_32F);
     }
-    matcher->knnMatch(descriptors_a, descriptors_b, matches_knn, n_neighbors);
+    matcher->knnMatch(descriptors_a, descriptors_b, matches_knn, Matcher::n_neighbors);
 
     std::cout << "Found " << matches_knn.size() << " initial matches" << std::endl;
 
     std::vector<cv::DMatch> matches;
 
     for (size_t i = 0; i < matches_knn.size(); i++) {
-        if (matches_knn[i].size() == n_neighbors) {
+        if (matches_knn[i].size() == Matcher::n_neighbors) {
             float d1 = matches_knn[i][0].distance;
             float d2 = matches_knn[i][1].distance;
 
-            if (d1 / d2 < ratio_threshold) {
+            if (d1 / d2 < test_ratio) {
                 matches.push_back(matches_knn[i][0]);
             }
         }
