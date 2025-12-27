@@ -1,4 +1,5 @@
 # include <vector>
+# include <unordered_map>
 # include <filesystem>
 # include <opencv2/opencv.hpp>
 # include <Eigen/Core>
@@ -21,7 +22,7 @@ void paint_projections(
     const cv::Mat& image,
     const std::vector<cv::KeyPoint>& keypoints,
     const std::vector<Eigen::Vector3d>& landmarks,
-    const std::map<int, int>& keypoint_to_landmark,
+    const std::unordered_map<int, int>& keypoint_to_landmark,
     const Eigen::Matrix3d& intrinsics,
     const Eigen::Quaterniond& rotation,
     const Eigen::Vector3d& translation,

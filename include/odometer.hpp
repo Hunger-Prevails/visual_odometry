@@ -20,7 +20,7 @@ public:
     std::vector<cv::KeyPoint> keypoints;
     cv::Mat descriptors;
 
-    std::map<int, int> feature_to_landmark;
+    std::unordered_map<int, int> feature_to_landmark;
 };
 
 
@@ -66,11 +66,11 @@ public:
     const std::vector<Eigen::Vector3d> getTranslations() const;
 
 protected:
-    std::tuple<std::map<int, int>, std::map<int, int>, std::vector<cv::DMatch>> create_map(
+    std::tuple<std::unordered_map<int, int>, std::unordered_map<int, int>, std::vector<cv::DMatch>> create_map(
         const std::vector<cv::DMatch>& matches, const cv::Mat& mask
     ) const;
 
-    std::tuple<cv::Mat, cv::Mat, cv::Mat> computePose(
+    std::tuple<cv::Mat, cv::Mat, cv::Mat> compute_pose_initial(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches
@@ -84,13 +84,19 @@ protected:
         const cv::Mat& translation
     ) const;
 
-    std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> keypoints_to_points(
+    std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> keypoints_to_keypoints(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches
     ) const;
 
-    void bundle_adjustment(
+    std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>, std::vector<cv::DMatch>, std::vector<cv::DMatch>> keypoints_to_landmarks(
+        const std::shared_ptr<Keyframe>& keyframe,
+        const std::vector<cv::KeyPoint>& keypoints,
+        const std::vector<cv::DMatch>& matches
+    ) const;
+
+    void bundle_adjustment_initial(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches,

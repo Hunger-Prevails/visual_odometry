@@ -44,17 +44,17 @@ Odometer::Odometer(
 
 Odometer::~Odometer() = default;
 
-std::tuple<std::map<int, int>, std::map<int, int>, std::vector<cv::DMatch>> Odometer::create_map(
+std::tuple<std::unordered_map<int, int>, std::unordered_map<int, int>, std::vector<cv::DMatch>> Odometer::create_map(
     const std::vector<cv::DMatch>& matches, const cv::Mat& mask
 ) const {
-    std::map<int, int> map_a;
-    std::map<int, int> map_b;
+    std::unordered_map<int, int> map_a;
+    std::unordered_map<int, int> map_b;
     std::vector<cv::DMatch> matches_inliers;
 
     for (size_t i = 0; i < matches.size(); ++i) {
         if (!mask.at<uchar>(i)) continue;
 
-        const auto& match = matches[i];
+        auto match = matches[i];
 
         map_a.emplace(match.queryIdx, static_cast<int>(matches_inliers.size()));
         map_b.emplace(match.trainIdx, static_cast<int>(matches_inliers.size()));
@@ -87,7 +87,7 @@ void Odometer::initialize() {
         write_path / "initial_matches.png"
     );
 
-    auto [rotation, translation, mask] = computePose(keypoints_a, keypoints_b, matches);
+    auto [rotation, translation, mask] = compute_pose_initial(keypoints_a, keypoints_b, matches);
 
     auto [map_a, map_b, matches_inliers] = create_map(matches, mask);
 
@@ -122,7 +122,7 @@ void Odometer::initialize() {
         write_path / "projections_b_triangulate.png"
     );
 
-    bundle_adjustment(
+    bundle_adjustment_initial(
         keypoints_a,
         keypoints_b,
         matches_inliers,
@@ -218,7 +218,7 @@ const std::vector<Eigen::Vector3d> Odometer::getTranslations() const {
     return result;
 }
 
-std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> Odometer::keypoints_to_points(
+std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> Odometer::keypoints_to_keypoints(
     const std::vector<cv::KeyPoint>& keypoints_a,
     const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches
@@ -233,12 +233,46 @@ std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> Odometer::keypoin
     return {points_a, points_b};
 }
 
-std::tuple<cv::Mat, cv::Mat, cv::Mat> Odometer::computePose(
+std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>, std::vector<cv::DMatch>, std::vector<cv::DMatch>> Odometer::keypoints_to_landmarks(
+    const std::shared_ptr<Keyframe>& keyframe,
+    const std::vector<cv::KeyPoint>& keypoints,
+    const std::vector<cv::DMatch>& matches
+) const {
+    std::vector<cv::Point2f> points;
+    std::vector<cv::Point3f> landmarks;
+
+    std::vector<cv::DMatch> matches_to_track;
+    std::vector<cv::DMatch> matches_to_chart;
+
+    for (auto match: matches) {
+        auto iterator = keyframe->feature_to_landmark.find(match.queryIdx);
+
+        if (iterator == keyframe->feature_to_landmark.end()) {
+            matches_to_chart.push_back(match);
+            continue;
+        }
+        matches_to_track.push_back(match);
+
+        points.push_back(keypoints[match.trainIdx].pt);
+
+        auto landmark = this->landmarks[iterator->second];
+
+        landmarks.emplace_back(
+            static_cast<float>(landmark.x()),
+            static_cast<float>(landmark.y()),
+            static_cast<float>(landmark.z())
+        );
+    }
+
+    return {points, landmarks, matches_to_track, matches_to_chart};
+}
+
+std::tuple<cv::Mat, cv::Mat, cv::Mat> Odometer::compute_pose_initial(
     const std::vector<cv::KeyPoint>& keypoints_a,
     const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches
 ) const {
-    auto [points_a, points_b] = keypoints_to_points(keypoints_a, keypoints_b, matches);
+    auto [points_a, points_b] = keypoints_to_keypoints(keypoints_a, keypoints_b, matches);
 
     cv::Mat mask;
     cv::Mat intrinsics;
@@ -268,7 +302,7 @@ std::vector<Eigen::Vector3d> Odometer::triangulate(
     const cv::Mat& rotation,
     const cv::Mat& translation
 ) const {
-    auto [points_a, points_b] = keypoints_to_points(keypoints_a, keypoints_b, matches);
+    auto [points_a, points_b] = keypoints_to_keypoints(keypoints_a, keypoints_b, matches);
 
     cv::Mat intrinsics;
     cv::eigen2cv(this->intrinsics, intrinsics);
@@ -318,7 +352,7 @@ Eigen::Vector3d Odometer::to_eigen_translation(const cv::Mat& translation) const
     return translation_eigen;
 }
 
-void Odometer::bundle_adjustment(
+void Odometer::bundle_adjustment_initial(
     const std::vector<cv::KeyPoint>& keypoints_a,
     const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches,
@@ -330,7 +364,7 @@ void Odometer::bundle_adjustment(
         throw std::invalid_argument("Number of landmarks must be equal to number of matches");
     }
 
-    auto [points_a, points_b] = keypoints_to_points(keypoints_a, keypoints_b, matches);
+    auto [points_a, points_b] = keypoints_to_keypoints(keypoints_a, keypoints_b, matches);
 
     auto problem = ceres::Problem();
     auto loss_function = new ceres::HuberLoss(1.0);
