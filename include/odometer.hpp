@@ -45,6 +45,13 @@ protected:
     std::queue<std::shared_ptr<Keyframe>> keyframes;
     std::vector<Eigen::Vector3d> landmarks;
 
+    static const float essential_error;
+    static const float essential_confidence;
+
+    static const int perspective_iterations;
+    static const float perspective_error;
+    static const float perspective_confidence;
+
 public:
     Odometer(
         Eigen::Matrix3d intrinsics,
@@ -66,14 +73,27 @@ public:
     const std::vector<Eigen::Vector3d> getTranslations() const;
 
 protected:
-    std::tuple<std::unordered_map<int, int>, std::unordered_map<int, int>, std::vector<cv::DMatch>> create_map(
-        const std::vector<cv::DMatch>& matches, const cv::Mat& mask
+    std::unordered_map<int, int> create_map(const std::vector<cv::DMatch>& matches, std::shared_ptr<Keyframe>& keyframe) const;
+
+    std::pair<cv::Mat, cv::Mat> fetch_camera_pose(int frame) const;
+
+    std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> track_or_chart(
+        const std::shared_ptr<Keyframe>& keyframe,
+        const std::vector<cv::DMatch>& matches
     ) const;
 
-    std::tuple<cv::Mat, cv::Mat, cv::Mat> compute_pose_initial(
+    std::tuple<cv::Mat, cv::Mat, std::vector<cv::DMatch>> compute_pose_initial(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches
+    ) const;
+
+    std::vector<cv::DMatch> compute_pose(
+        const std::shared_ptr<Keyframe>& keyframe,
+        const std::vector<cv::KeyPoint>& keypoints,
+        const std::vector<cv::DMatch>& matches,
+        cv::Mat& rotation,
+        cv::Mat& translation
     ) const;
 
     std::vector<Eigen::Vector3d> triangulate(
@@ -90,7 +110,7 @@ protected:
         const std::vector<cv::DMatch>& matches
     ) const;
 
-    std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>, std::vector<cv::DMatch>, std::vector<cv::DMatch>> keypoints_to_landmarks(
+    std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>> keypoints_to_landmarks(
         const std::shared_ptr<Keyframe>& keyframe,
         const std::vector<cv::KeyPoint>& keypoints,
         const std::vector<cv::DMatch>& matches
@@ -104,7 +124,4 @@ protected:
         Eigen::Quaterniond& rotation,
         Eigen::Vector3d& translation
     ) const;
-
-    Eigen::Quaterniond to_eigen_rotation(const cv::Mat& rotation) const;
-    Eigen::Vector3d to_eigen_translation(const cv::Mat& translation) const;
 };

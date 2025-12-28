@@ -3,7 +3,7 @@ find_package(Eigen3 CONFIG REQUIRED)
 find_package(OpenCV CONFIG REQUIRED)
 find_package(indicators CONFIG REQUIRED)
 
-add_library(odometer odometer.cpp image_loader.cpp feature_extractor.cpp feature_matcher.cpp viz_tools.cpp)
+add_library(odometer odometer.cpp image_loader.cpp feature_extractor.cpp feature_matcher.cpp viz_tools.cpp utils.cpp)
 target_include_directories(odometer PUBLIC ${CMAKE_SOURCE_DIR}/include)
 if(MSVC)
     target_compile_options(odometer PRIVATE /EHsc)

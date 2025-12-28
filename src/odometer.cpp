@@ -12,7 +12,14 @@
 # include "feature_extractor.hpp"
 # include "cost_functions.hpp"
 # include "viz_tools.hpp"
+# include "utils.hpp"
 
+const float Odometer::essential_error(1.0);
+const float Odometer::essential_confidence(0.99);
+
+const int Odometer::perspective_iterations(100);
+const float Odometer::perspective_error(2.0);
+const float Odometer::perspective_confidence(0.99);
 
 Odometer::Odometer(
     Eigen::Matrix3d intrinsics,
@@ -44,24 +51,54 @@ Odometer::Odometer(
 
 Odometer::~Odometer() = default;
 
-std::tuple<std::unordered_map<int, int>, std::unordered_map<int, int>, std::vector<cv::DMatch>> Odometer::create_map(
-    const std::vector<cv::DMatch>& matches, const cv::Mat& mask
-) const {
-    std::unordered_map<int, int> map_a;
-    std::unordered_map<int, int> map_b;
-    std::vector<cv::DMatch> matches_inliers;
+std::unordered_map<int, int> Odometer::create_map(const std::vector<cv::DMatch>& matches, std::shared_ptr<Keyframe>& keyframe) const {
+    std::unordered_map<int, int> feature_to_landmark;
 
     for (size_t i = 0; i < matches.size(); ++i) {
-        if (!mask.at<uchar>(i)) continue;
+        auto it = keyframe->feature_to_landmark.find(matches[i].queryIdx);
 
-        auto match = matches[i];
-
-        map_a.emplace(match.queryIdx, static_cast<int>(matches_inliers.size()));
-        map_b.emplace(match.trainIdx, static_cast<int>(matches_inliers.size()));
-
-        matches_inliers.push_back(match);
+        if (it == keyframe->feature_to_landmark.end()) {
+            throw std::runtime_error("match does not correspond to any existant landmark");
+        }
+        feature_to_landmark.emplace(matches[i].trainIdx, it->second);
     }
-    return {map_a, map_b, matches_inliers};
+    std::cout << "Manages to track " << feature_to_landmark.size() << " existant landmarks" << std::endl;
+
+    return feature_to_landmark;
+}
+
+std::pair<cv::Mat, cv::Mat> Odometer::fetch_camera_pose(int frame) const {
+    auto rotation_eigen = rotations.at(frame);
+    auto translation_eigen = translations.at(frame);
+
+    cv::Mat rotation, translation;
+
+    cv::eigen2cv(rotation_eigen.toRotationMatrix(), rotation);
+    cv::eigen2cv(translation_eigen, translation);
+
+    return {rotation, translation};
+}
+
+std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> Odometer::track_or_chart(
+    const std::shared_ptr<Keyframe>& keyframe,
+    const std::vector<cv::DMatch>& matches
+) const {
+    std::vector<cv::DMatch> matches_to_track;
+    std::vector<cv::DMatch> matches_to_chart;
+
+    for (auto match: matches) {
+        auto iterator = keyframe->feature_to_landmark.find(match.queryIdx);
+
+        if (iterator == keyframe->feature_to_landmark.end()) {
+            matches_to_chart.push_back(match);
+            continue;
+        }
+        matches_to_track.push_back(match);
+    }
+    std::cout << "to track " << matches_to_track.size() << " matches" << std::endl;
+    std::cout << "to chart " << matches_to_chart.size() << " matches" << std::endl;
+
+    return {matches_to_track, matches_to_chart};
 }
 
 void Odometer::initialize() {
@@ -84,12 +121,10 @@ void Odometer::initialize() {
         keypoints_a,
         keypoints_b,
         matches,
-        write_path / "initial_matches.png"
+        write_path / "matches_initial.png"
     );
 
-    auto [rotation, translation, mask] = compute_pose_initial(keypoints_a, keypoints_b, matches);
-
-    auto [map_a, map_b, matches_inliers] = create_map(matches, mask);
+    auto [rotation, translation, matches_inliers] = compute_pose_initial(keypoints_a, keypoints_b, matches);
 
     paint_matches(
         image_a,
@@ -97,7 +132,7 @@ void Odometer::initialize() {
         keypoints_a,
         keypoints_b,
         matches_inliers,
-        write_path / "initial_matches_inliers.png"
+        write_path / "matches_initial_inliers.png"
     );
 
     auto landmarks = triangulate(
@@ -107,9 +142,10 @@ void Odometer::initialize() {
         rotation,
         translation
     );
+    auto map_a = create_map_query(matches_inliers);
+    auto map_b = create_map_train(matches_inliers);
 
-    auto rotation_eigen = to_eigen_rotation(rotation);
-    auto translation_eigen = to_eigen_translation(translation);
+    auto [rotation_eigen, translation_eigen] = to_eigen(rotation, translation);
 
     paint_projections(
         image_b,
@@ -119,7 +155,7 @@ void Odometer::initialize() {
         intrinsics,
         rotation_eigen,
         translation_eigen,
-        write_path / "projections_b_triangulate.png"
+        write_path / "projections_initial_triangulate.png"
     );
 
     bundle_adjustment_initial(
@@ -139,7 +175,7 @@ void Odometer::initialize() {
         intrinsics,
         rotation_eigen,
         translation_eigen,
-        write_path / "projections_b_bundle_adjustment.png"
+        write_path / "projections_initial_bundle_adjustment.png"
     );
 
     this->landmarks = std::move(landmarks);
@@ -149,7 +185,7 @@ void Odometer::initialize() {
     rotations.emplace(temporal_baseline, rotation_eigen);
     translations.emplace(temporal_baseline, translation_eigen);
 
-    std::cout << "Completes initialization" << std::endl;
+    std::cout << "Completes initialization with " << this->landmarks.size() << " landmarks" << std::endl;
 }
 
 void Odometer::processFrame(int index) {
@@ -159,18 +195,40 @@ void Odometer::processFrame(int index) {
     auto image = loader->operator[](index);
     auto keyframe = keyframes.back();
 
+    auto [rotation, translation] = fetch_camera_pose(index - 1);
+
     auto [keypoints, descriptors] = extractor->extract(image);
 
     auto matches = matcher->match_knn(keyframe->descriptors, descriptors);
 
-    rotations.emplace(index, Eigen::Quaterniond::Identity());
-    translations.emplace(index, Eigen::Vector3d::Zero());
+    auto [matches_to_track, matches_to_chart] = track_or_chart(keyframe, matches);
+
+    auto matches_inliers = compute_pose(keyframe, keypoints, matches_to_track, rotation, translation);
+
+    auto feature_to_landmark = create_map(matches_inliers, keyframe);
+
+    auto [rotation_eigen, translation_eigen] = to_eigen(rotation, translation);
+
+    paint_projections(
+        image,
+        keypoints,
+        this->landmarks,
+        feature_to_landmark,
+        intrinsics,
+        rotation_eigen,
+        translation_eigen,
+        write_path / ("projections_frame_" + std::to_string(index) + "_perspective.png")
+    );
+
+    rotations.emplace(index, rotation_eigen);
+    translations.emplace(index, translation_eigen);
 }
 
 void Odometer::processFrames() {
     if (!is_initialized) {
         throw std::runtime_error("Call initialize() with two frames before processing frames.");
     }
+
     indicators::ProgressBar bar_a{
         indicators::option::MaxProgress{temporal_baseline - 1},
         indicators::option::Start{"["},
@@ -192,7 +250,7 @@ void Odometer::processFrames() {
         indicators::option::End{"]"},
         indicators::option::PrefixText{"process subsequent frames:"}
     };
-    for (size_t i = temporal_baseline; i < loader->size(); ++i) {
+    for (size_t i = temporal_baseline + 1; i < loader->size(); ++i) {
         bar_b.tick();
         processFrame(i);
     }
@@ -233,7 +291,7 @@ std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> Odometer::keypoin
     return {points_a, points_b};
 }
 
-std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>, std::vector<cv::DMatch>, std::vector<cv::DMatch>> Odometer::keypoints_to_landmarks(
+std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>> Odometer::keypoints_to_landmarks(
     const std::shared_ptr<Keyframe>& keyframe,
     const std::vector<cv::KeyPoint>& keypoints,
     const std::vector<cv::DMatch>& matches
@@ -241,18 +299,12 @@ std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>, std::vector<cv::D
     std::vector<cv::Point2f> points;
     std::vector<cv::Point3f> landmarks;
 
-    std::vector<cv::DMatch> matches_to_track;
-    std::vector<cv::DMatch> matches_to_chart;
-
     for (auto match: matches) {
         auto iterator = keyframe->feature_to_landmark.find(match.queryIdx);
 
         if (iterator == keyframe->feature_to_landmark.end()) {
-            matches_to_chart.push_back(match);
-            continue;
+            throw std::runtime_error("All matches must correspond to existant landmarks.");
         }
-        matches_to_track.push_back(match);
-
         points.push_back(keypoints[match.trainIdx].pt);
 
         auto landmark = this->landmarks[iterator->second];
@@ -264,10 +316,10 @@ std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>, std::vector<cv::D
         );
     }
 
-    return {points, landmarks, matches_to_track, matches_to_chart};
+    return {points, landmarks};
 }
 
-std::tuple<cv::Mat, cv::Mat, cv::Mat> Odometer::compute_pose_initial(
+std::tuple<cv::Mat, cv::Mat, std::vector<cv::DMatch>> Odometer::compute_pose_initial(
     const std::vector<cv::KeyPoint>& keypoints_a,
     const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches
@@ -277,7 +329,7 @@ std::tuple<cv::Mat, cv::Mat, cv::Mat> Odometer::compute_pose_initial(
     cv::Mat mask;
     cv::Mat intrinsics;
     cv::eigen2cv(this->intrinsics, intrinsics);
-    cv::Mat essentials = cv::findEssentialMat(points_a, points_b, intrinsics, cv::RANSAC, 0.999, 1.0, mask);
+    cv::Mat essentials = cv::findEssentialMat(points_a, points_b, intrinsics, cv::RANSAC, essential_confidence, essential_error, mask);
 
     if (essentials.empty()) {
         throw std::invalid_argument("Cannot compute Essential Matrix from given points");
@@ -291,8 +343,48 @@ std::tuple<cv::Mat, cv::Mat, cv::Mat> Odometer::compute_pose_initial(
     std::cout << "Found " << inliers << " inlier keypoint matches" << std::endl;
 
     return {
-        rotation, translation, mask
+        rotation, translation, funnel_matches(matches, mask)
     };
+}
+
+std::vector<cv::DMatch> Odometer::compute_pose(
+    const std::shared_ptr<Keyframe>& keyframe,
+    const std::vector<cv::KeyPoint>& keypoints,
+    const std::vector<cv::DMatch>& matches,
+    cv::Mat& rotation,
+    cv::Mat& translation
+) const {
+    auto [points, landmarks] = keypoints_to_landmarks(keyframe, keypoints, matches);
+
+    cv::Mat inliers;
+    cv::Mat intrinsics;
+    cv::eigen2cv(this->intrinsics, intrinsics);
+
+    cv::Mat rotation_vector;
+    cv::Rodrigues(rotation, rotation_vector);
+
+    auto success = cv::solvePnPRansac(
+        landmarks,
+        points,
+        intrinsics,
+        cv::Mat(),
+        rotation_vector,
+        translation,
+        true,
+        perspective_iterations,
+        perspective_error,
+        perspective_confidence,
+        inliers,
+        cv::SOLVEPNP_ITERATIVE
+    );
+    if (!success) {
+        throw std::runtime_error("Cannot compute camera pose from given points and landmarks");
+    }
+    cv::Rodrigues(rotation_vector, rotation);
+
+    std::cout << "Found " << inliers.rows << " inlier keypoint matches" << std::endl;
+
+    return select_matches(matches, inliers);
 }
 
 std::vector<Eigen::Vector3d> Odometer::triangulate(
@@ -338,18 +430,6 @@ std::vector<Eigen::Vector3d> Odometer::triangulate(
         throw std::runtime_error("Triangulation was not possible for some matches.");
     }
     return landmarks;
-}
-
-Eigen::Quaterniond Odometer::to_eigen_rotation(const cv::Mat& rotation) const {
-    Eigen::Matrix3d rotation_eigen;
-    cv::cv2eigen(rotation, rotation_eigen);
-    return Eigen::Quaterniond(rotation_eigen);
-}
-
-Eigen::Vector3d Odometer::to_eigen_translation(const cv::Mat& translation) const {
-    Eigen::Vector3d translation_eigen;
-    cv::cv2eigen(translation, translation_eigen);
-    return translation_eigen;
 }
 
 void Odometer::bundle_adjustment_initial(
