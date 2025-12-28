@@ -29,6 +29,7 @@ Odometer::Odometer(
     int n_keyframes,
     int count_features,
     float test_ratio,
+    float track_ratio,
     float function_tolerance
 ):
     is_initialized(false),
@@ -37,6 +38,7 @@ Odometer::Odometer(
     write_path(write_path),
     temporal_baseline(temporal_baseline),
     n_keyframes(n_keyframes),
+    track_ratio(track_ratio),
     function_tolerance(function_tolerance)
 {
     if (loader->size() <= temporal_baseline) {
@@ -188,14 +190,14 @@ void Odometer::initialize() {
     std::cout << "Completes initialization with " << this->landmarks.size() << " landmarks" << std::endl;
 }
 
-void Odometer::processFrame(int index) {
+void Odometer::process_frame(int frame, bool allow_keyframe) {
     if (!is_initialized) {
         throw std::runtime_error("Call initialize() with two frames before processing frames.");
     }
-    auto image = loader->operator[](index);
+    auto image = loader->operator[](frame);
     auto keyframe = keyframes.back();
 
-    auto [rotation, translation] = fetch_camera_pose(index - 1);
+    auto [rotation, translation] = fetch_camera_pose(frame - 1);
 
     auto [keypoints, descriptors] = extractor->extract(image);
 
@@ -217,14 +219,25 @@ void Odometer::processFrame(int index) {
         intrinsics,
         rotation_eigen,
         translation_eigen,
-        write_path / ("projections_frame_" + std::to_string(index) + "_perspective.png")
+        write_path / ("projections_frame_" + std::to_string(frame) + "_perspective.png")
     );
 
-    rotations.emplace(index, rotation_eigen);
-    translations.emplace(index, translation_eigen);
+    rotations.emplace(frame, rotation_eigen);
+    translations.emplace(frame, translation_eigen);
+
+    if (!allow_keyframe) {
+        return;
+    }
+    if (track_ratio <= float(feature_to_landmark.size()) / float(landmarks.size())) {
+        std::cout << "Skip keyframe creation for frame " << frame << std::endl;
+        return;
+    }
+    std::cout << "To create keyframe for frame " << frame << std::endl;
+
+    exit(0);
 }
 
-void Odometer::processFrames() {
+void Odometer::process_frames() {
     if (!is_initialized) {
         throw std::runtime_error("Call initialize() with two frames before processing frames.");
     }
@@ -239,7 +252,7 @@ void Odometer::processFrames() {
     };
     for (size_t i = 1; i < temporal_baseline; ++i) {
         bar_a.tick();
-        processFrame(i);
+        process_frame(i, false);
     }
 
     indicators::ProgressBar bar_b{
@@ -252,7 +265,7 @@ void Odometer::processFrames() {
     };
     for (size_t i = temporal_baseline + 1; i < loader->size(); ++i) {
         bar_b.tick();
-        processFrame(i);
+        process_frame(i);
     }
 
     std::cout << "Completes visual odometry" << std::endl;

@@ -47,6 +47,7 @@ int main(int argc, char *argv[])
     options.add_options()("n_keyframes", "Number of keyframes to maintain in memory", cxxopts::value<int>()->default_value("2"));
     options.add_options()("count_features", "Maximum numbers of features to detect on a frame", cxxopts::value<int>()->default_value("2000"));
     options.add_options()("test_ratio", "Test ratio against which to filter matches", cxxopts::value<float>()->default_value("0.75"));
+    options.add_options()("track_ratio", "Ratio of existant landmarks to track for non-keyframes", cxxopts::value<float>()->default_value("0.6"));
     options.add_options()("function_tolerance", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-4"));
 
     auto args = options.parse(argc, argv);
@@ -70,13 +71,14 @@ int main(int argc, char *argv[])
         args["n_keyframes"].as<int>(),
         args["count_features"].as<int>(),
         args["test_ratio"].as<float>(),
+        args["track_ratio"].as<float>(),
         args["function_tolerance"].as<float>()
     );
 
     std::cout << "to start visual odometry" << std::endl;
 
     odometer->initialize();
-    odometer->processFrames();
+    odometer->process_frames();
 
     auto rotations = odometer->getRotations();
     auto translations = odometer->getTranslations();

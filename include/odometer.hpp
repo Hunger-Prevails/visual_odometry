@@ -32,6 +32,7 @@ protected:
 
     int n_keyframes;
     int temporal_baseline;
+    float track_ratio;
     float function_tolerance;
 
     Eigen::Matrix3d intrinsics;
@@ -61,13 +62,14 @@ public:
         int n_keyframes = 2,
         int count_features = 2000,
         float test_ratio = 0.75,
+        float track_ratio = 0.6,
         float function_tolerance = 1e-3
     );
     ~Odometer();
 
     void initialize();
-    void processFrame(int index);
-    void processFrames();
+    void process_frame(int frame, bool allow_keyframe = true);
+    void process_frames();
 
     const std::vector<Eigen::Quaterniond> getRotations() const;
     const std::vector<Eigen::Vector3d> getTranslations() const;
@@ -94,6 +96,16 @@ protected:
         const std::vector<cv::DMatch>& matches,
         cv::Mat& rotation,
         cv::Mat& translation
+    ) const;
+
+    std::vector<cv::DMatch> epipolar_check(
+        const std::vector<cv::KeyPoint>& keypoints_a,
+        const std::vector<cv::KeyPoint>& keypoints_b,
+        const Eigen::Quaterniond& rotation_a,
+        const Eigen::Quaterniond& rotation_b,
+        const Eigen::Vector3d& translation_a,
+        const Eigen::Vector3d& translation_b,
+        const std::vector<cv::DMatch>& matches
     ) const;
 
     std::vector<Eigen::Vector3d> triangulate(
