@@ -5,11 +5,18 @@
 
 class ProjectionError {
 protected:
-    Eigen::Vector2d point;
-    Eigen::Matrix3d intrinsics;
+    const Eigen::Vector2d point;
+    const Eigen::Matrix3d intrinsics;
+    const Eigen::Quaterniond rotation;
+    const Eigen::Vector3d translation;
 
 public:
-    ProjectionError(const cv::Point2f& point, const Eigen::Matrix3d& intrinsics): point({point.x, point.y}), intrinsics(intrinsics) {}
+    ProjectionError(
+        const cv::Point2f& point,
+        const Eigen::Matrix3d& intrinsics,
+        const Eigen::Quaterniond& rotation,
+        const Eigen::Vector3d& translation
+    ): point({point.x, point.y}), intrinsics(intrinsics), rotation(rotation), translation(translation) {}
 
     template <typename T>
     bool operator()(
@@ -17,12 +24,16 @@ public:
         T* _residuals
     ) const {
         Eigen::Map<const Eigen::Matrix<T, 3, 1>> landmark(_landmark);
+        Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(_residuals);
+
+        auto rotation = this->rotation.cast<T>();
+        auto translation = this->translation.cast<T>();
+
+        auto landmark_camera = rotation * landmark + translation;
 
         auto intrinsics = this->intrinsics.cast<T>();
 
-        auto projection = (intrinsics * landmark).hnormalized();
-
-        Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(_residuals);
+        auto projection = (intrinsics * landmark_camera).hnormalized();
 
         auto point = this->point.cast<T>();
 
@@ -51,14 +62,13 @@ public:
         Eigen::Map<const Eigen::Matrix<T, 3, 1>> landmark(_landmark);
         Eigen::Map<const Eigen::Quaternion<T>> rotation(_rotation);
         Eigen::Map<const Eigen::Matrix<T, 3, 1>> translation(_translation);
+        Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(_residuals);
 
         auto landmark_camera = rotation * landmark + translation;
 
         auto intrinsics = this->intrinsics.cast<T>();
 
         auto projection = (intrinsics * landmark_camera).hnormalized();
-
-        Eigen::Map<Eigen::Matrix<T, 2, 1>> residuals(_residuals);
 
         auto point = this->point.cast<T>();
 

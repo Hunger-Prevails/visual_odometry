@@ -21,6 +21,9 @@ const int Odometer::perspective_iterations(100);
 const float Odometer::perspective_error(2.0);
 const float Odometer::perspective_confidence(0.99);
 
+const Eigen::Quaterniond Odometer::rotation_initial = Eigen::Quaterniond::Identity();
+const Eigen::Vector3d Odometer::translation_initial = Eigen::Vector3d::Zero();
+
 Odometer::Odometer(
     Eigen::Matrix3d intrinsics,
     std::shared_ptr<ImageLoader> loader,
@@ -109,9 +112,6 @@ void Odometer::initialize() {
     auto image_a = loader->operator[](0);
     auto image_b = loader->operator[](temporal_baseline);
 
-    rotations.emplace(0, Eigen::Quaterniond::Identity());
-    translations.emplace(0, Eigen::Vector3d::Zero());
-
     auto [keypoints_a, descriptors_a] = extractor->extract(image_a);
     auto [keypoints_b, descriptors_b] = extractor->extract(image_b);
 
@@ -126,7 +126,7 @@ void Odometer::initialize() {
         write_path / "matches_initial.png"
     );
 
-    auto [rotation, translation, matches_inliers] = compute_pose_initial(keypoints_a, keypoints_b, matches);
+    auto [rotation_a, rotation_b, translation_a, translation_b, matches_inliers] = compute_pose_initial(keypoints_a, keypoints_b, matches);
 
     paint_matches(
         image_a,
@@ -141,13 +141,13 @@ void Odometer::initialize() {
         keypoints_a,
         keypoints_b,
         matches_inliers,
-        rotation,
-        translation
+        rotation_a,
+        rotation_b,
+        translation_a,
+        translation_b
     );
     auto map_a = create_map_query(matches_inliers);
     auto map_b = create_map_train(matches_inliers);
-
-    auto [rotation_eigen, translation_eigen] = to_eigen(rotation, translation);
 
     paint_projections(
         image_b,
@@ -155,8 +155,8 @@ void Odometer::initialize() {
         landmarks,
         map_b,
         intrinsics,
-        rotation_eigen,
-        translation_eigen,
+        rotation_b,
+        translation_b,
         write_path / "projections_initial_triangulate.png"
     );
 
@@ -165,8 +165,10 @@ void Odometer::initialize() {
         keypoints_b,
         matches_inliers,
         landmarks,
-        rotation_eigen,
-        translation_eigen
+        rotation_a,
+        rotation_b,
+        translation_a,
+        translation_b
     );
 
     paint_projections(
@@ -175,8 +177,8 @@ void Odometer::initialize() {
         landmarks,
         map_b,
         intrinsics,
-        rotation_eigen,
-        translation_eigen,
+        rotation_b,
+        translation_b,
         write_path / "projections_initial_bundle_adjustment.png"
     );
 
@@ -184,8 +186,10 @@ void Odometer::initialize() {
     this->keyframes.push(std::make_shared<Keyframe>(0, keypoints_a, descriptors_a, map_a));
     this->keyframes.push(std::make_shared<Keyframe>(temporal_baseline, keypoints_b, descriptors_b, map_b));
 
-    rotations.emplace(temporal_baseline, rotation_eigen);
-    translations.emplace(temporal_baseline, translation_eigen);
+    rotations.emplace(0, rotation_a);
+    rotations.emplace(temporal_baseline, rotation_b);
+    translations.emplace(0, translation_a);
+    translations.emplace(temporal_baseline, translation_b);
 
     std::cout << "Completes initialization with " << this->landmarks.size() << " landmarks" << std::endl;
 }
@@ -205,9 +209,9 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
 
     auto [matches_to_track, matches_to_chart] = track_or_chart(keyframe, matches);
 
-    auto matches_inliers = compute_pose(keyframe, keypoints, matches_to_track, rotation, translation);
+    auto matches_to_track_inliers = compute_pose(keyframe, keypoints, matches_to_track, rotation, translation);
 
-    auto feature_to_landmark = create_map(matches_inliers, keyframe);
+    auto feature_to_landmark = create_map(matches_to_track_inliers, keyframe);
 
     auto [rotation_eigen, translation_eigen] = to_eigen(rotation, translation);
 
@@ -234,6 +238,15 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
     }
     std::cout << "To create keyframe for frame " << frame << std::endl;
 
+    auto matches_to_chart_inliers = epipolar_check(
+        keyframe->keypoints,
+        keypoints,
+        matches_to_chart,
+        rotations.at(keyframe->frame),
+        rotation_eigen,
+        translations.at(keyframe->frame),
+        translation_eigen
+    );
     exit(0);
 }
 
@@ -332,7 +345,7 @@ std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>> Odometer::keypoin
     return {points, landmarks};
 }
 
-std::tuple<cv::Mat, cv::Mat, std::vector<cv::DMatch>> Odometer::compute_pose_initial(
+std::tuple<Eigen::Quaterniond, Eigen::Quaterniond, Eigen::Vector3d, Eigen::Vector3d, std::vector<cv::DMatch>> Odometer::compute_pose_initial(
     const std::vector<cv::KeyPoint>& keypoints_a,
     const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches
@@ -342,7 +355,7 @@ std::tuple<cv::Mat, cv::Mat, std::vector<cv::DMatch>> Odometer::compute_pose_ini
     cv::Mat mask;
     cv::Mat intrinsics;
     cv::eigen2cv(this->intrinsics, intrinsics);
-    cv::Mat essentials = cv::findEssentialMat(points_a, points_b, intrinsics, cv::RANSAC, essential_confidence, essential_error, mask);
+    cv::Mat essentials = cv::findEssentialMat(points_a, points_b, intrinsics, cv::RANSAC, Odometer::essential_confidence, Odometer::essential_error, mask);
 
     if (essentials.empty()) {
         throw std::invalid_argument("Cannot compute Essential Matrix from given points");
@@ -355,8 +368,18 @@ std::tuple<cv::Mat, cv::Mat, std::vector<cv::DMatch>> Odometer::compute_pose_ini
 
     std::cout << "Found " << inliers << " inlier keypoint matches" << std::endl;
 
+    auto matches_inliers = funnel_matches(matches, mask);
+
+    auto [rotation_eigen, translation_eigen] = to_eigen(rotation, translation);
+
+    auto rotation_a = Odometer::rotation_initial;
+    auto rotation_b = rotation_eigen * rotation_a;
+
+    auto translation_a = Odometer::translation_initial;
+    auto translation_b = translation_eigen + rotation_eigen * translation_a;
+
     return {
-        rotation, translation, funnel_matches(matches, mask)
+        rotation_a, rotation_b, translation_a, translation_b, matches_inliers
     };
 }
 
@@ -384,9 +407,9 @@ std::vector<cv::DMatch> Odometer::compute_pose(
         rotation_vector,
         translation,
         true,
-        perspective_iterations,
-        perspective_error,
-        perspective_confidence,
+        Odometer::perspective_iterations,
+        Odometer::perspective_error,
+        Odometer::perspective_confidence,
         inliers,
         cv::SOLVEPNP_ITERATIVE
     );
@@ -400,26 +423,43 @@ std::vector<cv::DMatch> Odometer::compute_pose(
     return select_matches(matches, inliers);
 }
 
+std::vector<cv::DMatch> Odometer::epipolar_check(
+    const std::vector<cv::KeyPoint>& keypoints_a,
+    const std::vector<cv::KeyPoint>& keypoints_b,
+    const std::vector<cv::DMatch>& matches,
+    const Eigen::Quaterniond& rotation_a,
+    const Eigen::Quaterniond& rotation_b,
+    const Eigen::Vector3d& translation_a,
+    const Eigen::Vector3d& translation_b
+) const {
+    return matches;
+}
+
 std::vector<Eigen::Vector3d> Odometer::triangulate(
     const std::vector<cv::KeyPoint>& keypoints_a,
     const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches,
-    const cv::Mat& rotation,
-    const cv::Mat& translation
+    const Eigen::Quaterniond& rotation_a,
+    const Eigen::Quaterniond& rotation_b,
+    const Eigen::Vector3d& translation_a,
+    const Eigen::Vector3d& translation_b
 ) const {
     auto [points_a, points_b] = keypoints_to_keypoints(keypoints_a, keypoints_b, matches);
 
     cv::Mat intrinsics;
     cv::eigen2cv(this->intrinsics, intrinsics);
 
-    cv::Mat projection_a = cv::Mat::zeros(3, 4, intrinsics.type());
+    auto [rotation_a_mat, translation_a_mat] = from_eigen(rotation_a, translation_a);
+    auto [rotation_b_mat, translation_b_mat] = from_eigen(rotation_b, translation_b);
 
-    intrinsics.copyTo(projection_a(cv::Rect(0, 0, 3, 3)));
+    cv::Mat extrinsics_a;
+    cv::Mat extrinsics_b;
 
-    cv::Mat extrinsics;
-    cv::hconcat(rotation, translation, extrinsics);
+    cv::hconcat(rotation_a_mat, translation_a_mat, extrinsics_a);
+    cv::hconcat(rotation_b_mat, translation_b_mat, extrinsics_b);
 
-    auto projection_b = intrinsics * extrinsics;
+    auto projection_a = intrinsics * extrinsics_a;
+    auto projection_b = intrinsics * extrinsics_b;
 
     cv::Mat points_homogeneous;
     cv::triangulatePoints(projection_a, projection_b, points_a, points_b, points_homogeneous);
@@ -450,8 +490,10 @@ void Odometer::bundle_adjustment_initial(
     const std::vector<cv::KeyPoint>& keypoints_b,
     const std::vector<cv::DMatch>& matches,
     std::vector<Eigen::Vector3d>& landmarks,
-    Eigen::Quaterniond& rotation,
-    Eigen::Vector3d& translation
+    Eigen::Quaterniond& rotation_a,
+    Eigen::Quaterniond& rotation_b,
+    Eigen::Vector3d& translation_a,
+    Eigen::Vector3d& translation_b
 ) const {
     if (landmarks.size() != matches.size()) {
         throw std::invalid_argument("Number of landmarks must be equal to number of matches");
@@ -462,12 +504,12 @@ void Odometer::bundle_adjustment_initial(
     auto problem = ceres::Problem();
     auto loss_function = new ceres::HuberLoss(1.0);
 
-    problem.AddParameterBlock(rotation.coeffs().data(), 4, new ceres::EigenQuaternionManifold());
-    problem.AddParameterBlock(translation.data(), 3, new ceres::SphereManifold<3>());
+    problem.AddParameterBlock(rotation_b.coeffs().data(), 4, new ceres::EigenQuaternionManifold());
+    problem.AddParameterBlock(translation_b.data(), 3, new ceres::SphereManifold<3>());
 
     for (size_t i = 0; i < matches.size(); ++i) {
         problem.AddResidualBlock(
-            new ceres::AutoDiffCostFunction<ProjectionError, 2, 3>(new ProjectionError(points_a[i], intrinsics)),
+            new ceres::AutoDiffCostFunction<ProjectionError, 2, 3>(new ProjectionError(points_a[i], intrinsics, rotation_a, translation_a)),
             loss_function,
             landmarks[i].data()
         );
@@ -476,8 +518,8 @@ void Odometer::bundle_adjustment_initial(
             new ceres::AutoDiffCostFunction<ProjectionErrorFull, 2, 3, 4, 3>(new ProjectionErrorFull(points_b[i], intrinsics)),
             loss_function,
             landmarks[i].data(),
-            rotation.coeffs().data(),
-            translation.data()
+            rotation_b.coeffs().data(),
+            translation_b.data()
         );
     }
 

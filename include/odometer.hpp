@@ -53,6 +53,9 @@ protected:
     static const float perspective_error;
     static const float perspective_confidence;
 
+    static const Eigen::Quaterniond rotation_initial;
+    static const Eigen::Vector3d translation_initial;
+
 public:
     Odometer(
         Eigen::Matrix3d intrinsics,
@@ -84,7 +87,7 @@ protected:
         const std::vector<cv::DMatch>& matches
     ) const;
 
-    std::tuple<cv::Mat, cv::Mat, std::vector<cv::DMatch>> compute_pose_initial(
+    std::tuple<Eigen::Quaterniond, Eigen::Quaterniond, Eigen::Vector3d, Eigen::Vector3d, std::vector<cv::DMatch>> compute_pose_initial(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches
@@ -101,19 +104,21 @@ protected:
     std::vector<cv::DMatch> epipolar_check(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
+        const std::vector<cv::DMatch>& matches,
         const Eigen::Quaterniond& rotation_a,
         const Eigen::Quaterniond& rotation_b,
         const Eigen::Vector3d& translation_a,
-        const Eigen::Vector3d& translation_b,
-        const std::vector<cv::DMatch>& matches
+        const Eigen::Vector3d& translation_b
     ) const;
 
     std::vector<Eigen::Vector3d> triangulate(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches,
-        const cv::Mat& rotation,
-        const cv::Mat& translation
+        const Eigen::Quaterniond& rotation_a,
+        const Eigen::Quaterniond& rotation_b,
+        const Eigen::Vector3d& translation_a,
+        const Eigen::Vector3d& translation_b
     ) const;
 
     std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> keypoints_to_keypoints(
@@ -133,7 +138,9 @@ protected:
         const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches,
         std::vector<Eigen::Vector3d>& landmarks,
-        Eigen::Quaterniond& rotation,
-        Eigen::Vector3d& translation
+        Eigen::Quaterniond& rotation_a,
+        Eigen::Quaterniond& rotation_b,
+        Eigen::Vector3d& translation_a,
+        Eigen::Vector3d& translation_b
     ) const;
 };

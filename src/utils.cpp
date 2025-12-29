@@ -19,6 +19,19 @@ std::pair<Eigen::Quaterniond, Eigen::Vector3d> to_eigen(
     return {Eigen::Quaterniond(rotation_eigen), translation_eigen};
 }
 
+std::pair<cv::Mat, cv::Mat> from_eigen(
+    const Eigen::Quaterniond& rotation,
+    const Eigen::Vector3d& translation
+) {
+    cv::Mat rotation_mat;
+    cv::eigen2cv(rotation.toRotationMatrix(), rotation_mat);
+
+    cv::Mat translation_mat;
+    cv::eigen2cv(translation, translation_mat);
+
+    return {rotation_mat, translation_mat};
+}
+
 std::vector<cv::DMatch> funnel_matches(
     const std::vector<cv::DMatch>& matches,
     const cv::Mat& mask

@@ -10,6 +10,11 @@ std::pair<Eigen::Quaterniond, Eigen::Vector3d> to_eigen(
     const cv::Mat& translation
 );
 
+std::pair<cv::Mat, cv::Mat> from_eigen(
+    const Eigen::Quaterniond& rotation,
+    const Eigen::Vector3d& translation
+);
+
 std::vector<cv::DMatch> funnel_matches(
     const std::vector<cv::DMatch>& matches,
     const cv::Mat& mask
