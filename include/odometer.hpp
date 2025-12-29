@@ -84,8 +84,6 @@ public:
 protected:
     std::unordered_map<int, int> create_map(const std::vector<cv::DMatch>& matches, std::shared_ptr<Keyframe>& keyframe) const;
 
-    std::pair<cv::Mat, cv::Mat> fetch_camera_pose(int frame) const;
-
     std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> track_or_chart(
         const std::shared_ptr<Keyframe>& keyframe,
         const std::vector<cv::DMatch>& matches
@@ -97,12 +95,12 @@ protected:
         const std::vector<cv::DMatch>& matches
     ) const;
 
-    std::vector<cv::DMatch> compute_pose(
+    std::tuple<std::vector<cv::DMatch>, Eigen::Quaterniond, Eigen::Vector3d> compute_pose(
         const std::shared_ptr<Keyframe>& keyframe,
         const std::vector<cv::KeyPoint>& keypoints,
         const std::vector<cv::DMatch>& matches,
-        cv::Mat& rotation,
-        cv::Mat& translation
+        const Eigen::Quaterniond& rotation,
+        const Eigen::Vector3d& translation
     ) const;
 
     std::vector<cv::DMatch> epipolar_check(
@@ -115,7 +113,7 @@ protected:
         const Eigen::Vector3d& translation_b
     ) const;
 
-    std::vector<Eigen::Vector3d> triangulate(
+    std::pair<std::vector<Eigen::Vector3d>, std::vector<cv::DMatch>> triangulate(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
         const std::vector<cv::DMatch>& matches,
