@@ -26,14 +26,25 @@ public:
 
 class Odometer {
 protected:
+    static const int perspective_iterations;
+    static const float perspective_error;
+    static const float perspective_confidence;
+
+    static const Eigen::Quaterniond rotation_initial;
+    static const Eigen::Vector3d translation_initial;
+
     bool is_initialized;
 
-    fs::path write_path;
-
-    int n_keyframes;
+    int count_keyframes;
     int temporal_baseline;
-    float track_ratio;
+
+    float essential_confidence;
+    float essential_error;
+    float essential_error_initial;
     float function_tolerance;
+    float track_ratio;
+
+    fs::path write_path;
 
     Eigen::Matrix3d intrinsics;
     std::shared_ptr<ImageLoader> loader;
@@ -46,27 +57,20 @@ protected:
     std::queue<std::shared_ptr<Keyframe>> keyframes;
     std::vector<Eigen::Vector3d> landmarks;
 
-    static const float essential_error;
-    static const float essential_confidence;
-
-    static const int perspective_iterations;
-    static const float perspective_error;
-    static const float perspective_confidence;
-
-    static const Eigen::Quaterniond rotation_initial;
-    static const Eigen::Vector3d translation_initial;
-
 public:
     Odometer(
         Eigen::Matrix3d intrinsics,
         std::shared_ptr<ImageLoader> loader,
         fs::path write_path,
-        int temporal_baseline = 10,
-        int n_keyframes = 2,
         int count_features = 2000,
+        int count_keyframes = 2,
+        int temporal_baseline = 10,
+        float essential_confidence = 0.99,
+        float essential_error = 2.0,
+        float essential_error_initial = 1.0,
+        float function_tolerance = 1e-4,
         float test_ratio = 0.75,
-        float track_ratio = 0.6,
-        float function_tolerance = 1e-3
+        float track_ratio = 0.6
     );
     ~Odometer();
 

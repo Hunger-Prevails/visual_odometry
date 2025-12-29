@@ -27,3 +27,18 @@ std::vector<cv::DMatch> select_matches(
 
 std::unordered_map<int, int> create_map_query(const std::vector<cv::DMatch>& matches);
 std::unordered_map<int, int> create_map_train(const std::vector<cv::DMatch>& matches);
+
+Eigen::Matrix3d to_essentials(
+    const Eigen::Quaterniond& rotation_a,
+    const Eigen::Quaterniond& rotation_b,
+    const Eigen::Vector3d& translation_a,
+    const Eigen::Vector3d& translation_b
+);
+
+Eigen::MatrixX3d to_homogeneous(std::vector<cv::Point2f>& points);
+
+Eigen::VectorXd epipolar_products(
+    const Eigen::Matrix3d& fundamentals,
+    const Eigen::MatrixX3d& points_a,
+    const Eigen::MatrixX3d& points_b
+);

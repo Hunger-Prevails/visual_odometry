@@ -14,9 +14,6 @@
 # include "viz_tools.hpp"
 # include "utils.hpp"
 
-const float Odometer::essential_error(1.0);
-const float Odometer::essential_confidence(0.99);
-
 const int Odometer::perspective_iterations(100);
 const float Odometer::perspective_error(2.0);
 const float Odometer::perspective_confidence(0.99);
@@ -28,21 +25,27 @@ Odometer::Odometer(
     Eigen::Matrix3d intrinsics,
     std::shared_ptr<ImageLoader> loader,
     fs::path write_path,
-    int temporal_baseline,
-    int n_keyframes,
     int count_features,
+    int count_keyframes,
+    int temporal_baseline,
+    float essential_confidence,
+    float essential_error,
+    float essential_error_initial,
+    float function_tolerance,
     float test_ratio,
-    float track_ratio,
-    float function_tolerance
+    float track_ratio
 ):
     is_initialized(false),
     intrinsics(intrinsics),
     loader(loader),
     write_path(write_path),
+    count_keyframes(count_keyframes),
     temporal_baseline(temporal_baseline),
-    n_keyframes(n_keyframes),
-    track_ratio(track_ratio),
-    function_tolerance(function_tolerance)
+    essential_confidence(essential_confidence),
+    essential_error(essential_error),
+    essential_error_initial(essential_error_initial),
+    function_tolerance(function_tolerance),
+    track_ratio(track_ratio)
 {
     if (loader->size() <= temporal_baseline) {
         throw std::invalid_argument("there has to be at least as many frames as the temporal_baseline");
@@ -238,6 +241,15 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
     }
     std::cout << "To create keyframe for frame " << frame << std::endl;
 
+    paint_matches(
+        loader->operator[](keyframe->frame),
+        image,
+        keyframe->keypoints,
+        keypoints,
+        matches_to_chart,
+        write_path / ("matches_frame_" +  std::to_string(keyframe->frame) + "-" + std::to_string(frame) + ".png")
+    );
+
     auto matches_to_chart_inliers = epipolar_check(
         keyframe->keypoints,
         keypoints,
@@ -247,6 +259,16 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
         translations.at(keyframe->frame),
         translation_eigen
     );
+
+    paint_matches(
+        loader->operator[](keyframe->frame),
+        image,
+        keyframe->keypoints,
+        keypoints,
+        matches_to_chart_inliers,
+        write_path / ("matches_frame_" +  std::to_string(keyframe->frame) + "-" + std::to_string(frame) + "_inliers.png")
+    );
+
     exit(0);
 }
 
@@ -355,7 +377,7 @@ std::tuple<Eigen::Quaterniond, Eigen::Quaterniond, Eigen::Vector3d, Eigen::Vecto
     cv::Mat mask;
     cv::Mat intrinsics;
     cv::eigen2cv(this->intrinsics, intrinsics);
-    cv::Mat essentials = cv::findEssentialMat(points_a, points_b, intrinsics, cv::RANSAC, Odometer::essential_confidence, Odometer::essential_error, mask);
+    cv::Mat essentials = cv::findEssentialMat(points_a, points_b, intrinsics, cv::RANSAC, Odometer::essential_confidence, Odometer::essential_error_initial, mask);
 
     if (essentials.empty()) {
         throw std::invalid_argument("Cannot compute Essential Matrix from given points");
@@ -366,7 +388,7 @@ std::tuple<Eigen::Quaterniond, Eigen::Quaterniond, Eigen::Vector3d, Eigen::Vecto
 
     int inliers = cv::recoverPose(essentials, points_a, points_b, intrinsics, rotation, translation, mask);
 
-    std::cout << "Found " << inliers << " inlier keypoint matches" << std::endl;
+    std::cout << "Found " << inliers << " inlier keypoint matches after essential matrix recovery" << std::endl;
 
     auto matches_inliers = funnel_matches(matches, mask);
 
@@ -418,7 +440,7 @@ std::vector<cv::DMatch> Odometer::compute_pose(
     }
     cv::Rodrigues(rotation_vector, rotation);
 
-    std::cout << "Found " << inliers.rows << " inlier keypoint matches" << std::endl;
+    std::cout << "Found " << inliers.rows << " inlier keypoint matches after perspective-n-point" << std::endl;
 
     return select_matches(matches, inliers);
 }
@@ -432,7 +454,26 @@ std::vector<cv::DMatch> Odometer::epipolar_check(
     const Eigen::Vector3d& translation_a,
     const Eigen::Vector3d& translation_b
 ) const {
-    return matches;
+    auto essentials = to_essentials(rotation_a, rotation_b, translation_a, translation_b);
+
+    auto fundamentals = intrinsics.transpose() * essentials * intrinsics;
+
+    auto [points_a, points_b] = keypoints_to_keypoints(keypoints_a, keypoints_b, matches);
+
+    auto product = epipolar_products(fundamentals, to_homogeneous(points_a), to_homogeneous(points_b));
+
+    auto inliers = (product.array() < Odometer::essential_error).matrix();
+
+    std::vector<cv::DMatch> matches_inliers;
+
+    for (size_t i = 0; i < matches.size(); ++i) {
+        if (!inliers(i)) continue;
+
+        matches_inliers.push_back(matches[i]);
+    }
+    std::cout << "Found " << matches_inliers.size() << " inlier keypoint matches after epipolar check" << std::endl;
+
+    return matches_inliers;
 }
 
 std::vector<Eigen::Vector3d> Odometer::triangulate(

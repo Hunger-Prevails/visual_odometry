@@ -80,3 +80,46 @@ std::unordered_map<int, int> create_map_train(const std::vector<cv::DMatch>& mat
     }
     return map_train;
 }
+
+Eigen::Matrix3d to_essentials(
+    const Eigen::Quaterniond& rotation_a,
+    const Eigen::Quaterniond& rotation_b,
+    const Eigen::Vector3d& translation_a,
+    const Eigen::Vector3d& translation_b
+) {
+    auto rotation = rotation_b * rotation_a.conjugate();
+
+    auto translation = translation_b - rotation * translation_a;
+
+    auto rotation_matrix = rotation.toRotationMatrix();
+
+    Eigen::Matrix3d essentials;
+
+    essentials.col(0) = translation.cross(rotation_matrix.col(0));
+    essentials.col(1) = translation.cross(rotation_matrix.col(1));
+    essentials.col(2) = translation.cross(rotation_matrix.col(2));
+
+    return essentials;
+}
+
+Eigen::MatrixX3d to_homogeneous(std::vector<cv::Point2f>& points) {
+    Eigen::MatrixXd homogeneous = Eigen::MatrixXd::Ones(points.size(), 3);
+
+    Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, 2, Eigen::RowMajor>> points_eigen(reinterpret_cast<float*>(points.data()), points.size(), 2);
+
+    homogeneous.leftCols<2>() = points_eigen.cast<double>();
+
+    return homogeneous;
+}
+
+Eigen::VectorXd epipolar_products(
+    const Eigen::Matrix3d& fundamentals,
+    const Eigen::MatrixX3d& points_a,
+    const Eigen::MatrixX3d& points_b
+) {
+    auto lines = (fundamentals * points_a.transpose()).transpose();
+
+    auto norms = lines.leftCols<2>().rowwise().norm();
+
+    return ((points_b.array() * lines.array()).rowwise().sum().abs() / norms.array()).matrix();
+}
