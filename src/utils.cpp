@@ -72,11 +72,11 @@ std::unordered_map<int, int> create_map_query(const std::vector<cv::DMatch>& mat
     return map_query;
 }
 
-std::unordered_map<int, int> create_map_train(const std::vector<cv::DMatch>& matches) {
+std::unordered_map<int, int> create_map_train(const std::vector<cv::DMatch>& matches, const size_t offset) {
     std::unordered_map<int, int> map_train;
 
     for (size_t i = 0; i < matches.size(); ++i) {
-        map_train.emplace(matches[i].trainIdx, static_cast<int>(i));
+        map_train.emplace(matches[i].trainIdx, static_cast<int>(i + offset));
     }
     return map_train;
 }

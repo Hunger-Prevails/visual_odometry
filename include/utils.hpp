@@ -26,7 +26,7 @@ std::vector<cv::DMatch> select_matches(
 );
 
 std::unordered_map<int, int> create_map_query(const std::vector<cv::DMatch>& matches);
-std::unordered_map<int, int> create_map_train(const std::vector<cv::DMatch>& matches);
+std::unordered_map<int, int> create_map_train(const std::vector<cv::DMatch>& matches, size_t offset = 0);
 
 Eigen::Matrix3d to_essentials(
     const Eigen::Quaterniond& rotation_a,

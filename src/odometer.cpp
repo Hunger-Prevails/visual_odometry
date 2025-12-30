@@ -48,7 +48,7 @@ Odometer::Odometer(
     track_ratio(track_ratio)
 {
     if (loader->size() <= temporal_baseline) {
-        throw std::invalid_argument("there has to be at least as many frames as the temporal_baseline");
+        throw std::invalid_argument("There has to be at least as many frames as the temporal_baseline");
     }
     extractor = std::make_unique<Extractor>(count_features);
 
@@ -58,6 +58,20 @@ Odometer::Odometer(
 }
 
 Odometer::~Odometer() = default;
+
+std::vector<bool> Odometer::landmarks_to_freeze(
+    const std::shared_ptr<Keyframe>& keyframe
+) const {
+    std::vector<bool> to_freeze(landmarks.size(), false);
+
+    std::ranges::for_each(
+        keyframe->feature_to_landmark | std::views::values,
+        [&] (int landmark) {
+            to_freeze[landmark] = true;
+        }
+    );
+    return to_freeze;
+}
 
 std::unordered_map<int, int> Odometer::create_map(const std::vector<cv::DMatch>& matches, std::shared_ptr<Keyframe>& keyframe) const {
     std::unordered_map<int, int> feature_to_landmark;
@@ -174,8 +188,8 @@ void Odometer::initialize() {
     );
 
     this->landmarks = std::move(landmarks);
-    this->keyframes.push(std::make_shared<Keyframe>(0, keypoints_a, descriptors_a, map_a));
-    this->keyframes.push(std::make_shared<Keyframe>(temporal_baseline, keypoints_b, descriptors_b, map_b));
+    this->keyframes.push_back(std::make_shared<Keyframe>(0, keypoints_a, descriptors_a, map_a));
+    this->keyframes.push_back(std::make_shared<Keyframe>(temporal_baseline, keypoints_b, descriptors_b, map_b));
 
     rotations.emplace(0, rotation_a);
     rotations.emplace(temporal_baseline, rotation_b);
@@ -198,32 +212,21 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
 
     auto [matches_to_track, matches_to_chart] = track_or_chart(keyframe, matches);
 
-    auto [matches_to_track_inliers, rotation, translation] = compute_pose(keyframe, keypoints, matches_to_track, rotations.at(frame - 1), translations.at(frame - 1));
-
-    auto feature_to_landmark_track = create_map(matches_to_track_inliers, keyframe);
-
-    paint_projections(
-        image,
+    auto [matches_to_track_inliers, rotation, translation] = compute_pose(
+        keyframe,
         keypoints,
-        this->landmarks,
-        feature_to_landmark_track,
-        intrinsics,
-        rotation,
-        translation,
-        write_path / ("projections_frame_" + std::to_string(frame) + "_perspective.png")
+        matches_to_track,
+        rotations.at(frame - 1),
+        translations.at(frame - 1)
     );
 
-    if (!allow_keyframe) {
-        rotations.emplace(frame, rotation);
-        translations.emplace(frame, translation);
-        return;
-    }
-    if (track_ratio <= float(feature_to_landmark_track.size()) / float(landmarks.size())) {
-        rotations.emplace(frame, rotation);
-        translations.emplace(frame, translation);
+    auto map_to_track = create_map(matches_to_track_inliers, keyframe);
 
-        std::cout << "Skip keyframe creation for frame " << frame << std::endl;
+    rotations.emplace(frame, rotation);
+    translations.emplace(frame, translation);
 
+    if (!allow_keyframe || track_ratio <= float(map_to_track.size()) / float(landmarks.size())) {
+        std::cout << "Skips keyframe creation for frame " << frame << std::endl;
         return;
     }
     std::cout << "To create keyframe for frame " << frame << std::endl;
@@ -246,6 +249,36 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
         rotation,
         translations.at(keyframe->frame),
         translation
+    );
+    auto map_to_chart = create_map_train(matches_to_chart_viable, this->landmarks.size());
+
+    map_to_track.insert(map_to_chart.begin(), map_to_chart.end());
+
+    this->landmarks.insert(this->landmarks.end(), landmarks.begin(), landmarks.end());
+    this->keyframes.push_back(std::make_shared<Keyframe>(frame, keypoints, descriptors, map_to_track));
+
+    paint_projections(
+        image,
+        keypoints,
+        this->landmarks,
+        map_to_track,
+        intrinsics,
+        rotation,
+        translation,
+        write_path / ("projections_frame_" + std::to_string(frame) + "_perspective.png")
+    );
+
+    bundle_adjustment();
+
+    paint_projections(
+        image,
+        keypoints,
+        this->landmarks,
+        map_to_track,
+        intrinsics,
+        rotation,
+        translation,
+        write_path / ("projections_frame_" + std::to_string(frame) + "_bundle_adjustment.png")
     );
     exit(0);
 }
@@ -355,7 +388,15 @@ std::tuple<Eigen::Quaterniond, Eigen::Quaterniond, Eigen::Vector3d, Eigen::Vecto
     cv::Mat mask;
     cv::Mat intrinsics;
     cv::eigen2cv(this->intrinsics, intrinsics);
-    cv::Mat essentials = cv::findEssentialMat(points_a, points_b, intrinsics, cv::RANSAC, Odometer::essential_confidence, Odometer::essential_error_initial, mask);
+    cv::Mat essentials = cv::findEssentialMat(
+        points_a,
+        points_b,
+        intrinsics,
+        cv::RANSAC,
+        Odometer::essential_confidence,
+        Odometer::essential_error_initial,
+        mask
+    );
 
     if (essentials.empty()) {
         throw std::invalid_argument("Cannot compute Essential Matrix from given points");
@@ -438,7 +479,7 @@ std::vector<cv::DMatch> Odometer::epipolar_check(
 ) const {
     auto essentials = to_essentials(rotation_a, rotation_b, translation_a, translation_b);
 
-    auto fundamentals = intrinsics.transpose() * essentials * intrinsics;
+    auto fundamentals = intrinsics.inverse().transpose() * essentials * intrinsics.inverse();
 
     auto [points_a, points_b] = keypoints_to_keypoints(keypoints_a, keypoints_b, matches);
 
@@ -563,4 +604,10 @@ void Odometer::bundle_adjustment_initial(
 
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
+}
+
+void Odometer::bundle_adjustment() {
+    auto to_freeze = landmarks_to_freeze(keyframes.front());
+
+    return;
 }

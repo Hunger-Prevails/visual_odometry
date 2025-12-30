@@ -1,7 +1,7 @@
 # include <map>
 # include <filesystem>
 # include <vector>
-# include <queue>
+# include <deque>
 # include <Eigen/Dense>
 # include <Eigen/Core>
 # include <opencv2/opencv.hpp>
@@ -54,7 +54,7 @@ protected:
     std::map<int, Eigen::Quaterniond> rotations;
     std::map<int, Eigen::Vector3d> translations;
 
-    std::queue<std::shared_ptr<Keyframe>> keyframes;
+    std::deque<std::shared_ptr<Keyframe>> keyframes;
     std::vector<Eigen::Vector3d> landmarks;
 
 public:
@@ -82,6 +82,8 @@ public:
     const std::vector<Eigen::Vector3d> getTranslations() const;
 
 protected:
+    std::vector<bool> landmarks_to_freeze(const std::shared_ptr<Keyframe>& keyframe) const;
+
     std::unordered_map<int, int> create_map(const std::vector<cv::DMatch>& matches, std::shared_ptr<Keyframe>& keyframe) const;
 
     std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> track_or_chart(
@@ -145,4 +147,6 @@ protected:
         Eigen::Vector3d& translation_a,
         Eigen::Vector3d& translation_b
     ) const;
+
+    void bundle_adjustment();
 };
