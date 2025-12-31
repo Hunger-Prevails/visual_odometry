@@ -48,15 +48,15 @@ void paint_projections(
 ) {
     cv::Mat dest = image.clone();
 
-    for (auto [i_keypoint, i_landmark]: feature_to_landmark) {
-        auto landmark_camera = rotation * landmarks[i_landmark] + translation;
+    for (auto [feature, landmark]: feature_to_landmark) {
+        auto landmark_camera = rotation * landmarks[landmark] + translation;
 
-        auto projection = (intrinsics * landmark_camera).hnormalized();
+        auto projection = eigen2cv((intrinsics * landmark_camera).hnormalized());
 
-        cv::circle(dest, keypoints[i_keypoint].pt, 3, cv::Scalar(0, 255, 0), -1);
-        cv::circle(dest, eigen2cv(projection), 3, cv::Scalar(255, 0, 0), -1);
+        cv::circle(dest, keypoints[feature].pt, 3, cv::Scalar(0, 255, 0), -1);
+        cv::circle(dest, projection, 3, cv::Scalar(255, 0, 0), -1);
 
-        cv::line(dest, keypoints[i_keypoint].pt, eigen2cv(projection), cv::Scalar(255, 255, 0), 1);
+        cv::line(dest, keypoints[feature].pt, projection, cv::Scalar(255, 255, 0), 1);
     }
     cv::imwrite(write_path.string(), dest);
 }

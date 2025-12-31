@@ -41,7 +41,9 @@ protected:
     float essential_confidence;
     float essential_error;
     float essential_error_initial;
-    float function_tolerance;
+    float tolerance_function;
+    float tolerance_gradient;
+    float tolerance_parameter;
     float track_ratio;
 
     fs::path write_path;
@@ -68,7 +70,9 @@ public:
         float essential_confidence = 0.99,
         float essential_error = 2.0,
         float essential_error_initial = 1.0,
-        float function_tolerance = 1e-4,
+        float tolerance_function = 1e-6,
+        float tolerance_gradient = 1e-10,
+        float tolerance_parameter = 1e-8,
         float test_ratio = 0.75,
         float track_ratio = 0.6
     );
@@ -148,5 +152,5 @@ protected:
         Eigen::Vector3d& translation_b
     ) const;
 
-    void bundle_adjustment();
+    void bundle_adjustment(std::vector<bool>& to_freeze);
 };

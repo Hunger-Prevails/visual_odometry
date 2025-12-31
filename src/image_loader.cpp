@@ -3,7 +3,7 @@
 
 
 ImageLoader::ImageLoader(const fs::path& folder_path) {
-    for (const auto& entry : fs::directory_iterator(folder_path)) {
+    for (const auto& entry: fs::directory_iterator(folder_path)) {
         if (entry.is_regular_file()) paths.push_back(entry.path());
     }
     if (paths.empty()) {

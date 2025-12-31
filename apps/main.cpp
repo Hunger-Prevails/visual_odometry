@@ -49,7 +49,9 @@ int main(int argc, char *argv[])
     options.add_options()("essential_confidence", "Confidence for essential matrix estimation", cxxopts::value<float>()->default_value("0.99"));
     options.add_options()("essential_error", "Inlier tolerance for epipolar check", cxxopts::value<float>()->default_value("2.0"));
     options.add_options()("essential_error_initial", "Inlier tolerance for epipolar check initially", cxxopts::value<float>()->default_value("1.0"));
-    options.add_options()("function_tolerance", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-4"));
+    options.add_options()("tolerance_function", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-6"));
+    options.add_options()("tolerance_gradient", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-10"));
+    options.add_options()("tolerance_parameter", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-8"));
     options.add_options()("test_ratio", "Test ratio against which to filter matches", cxxopts::value<float>()->default_value("0.75"));
     options.add_options()("track_ratio", "Ratio of existant landmarks to track for non-keyframes", cxxopts::value<float>()->default_value("0.6"));
 
@@ -76,7 +78,9 @@ int main(int argc, char *argv[])
         args["essential_confidence"].as<float>(),
         args["essential_error"].as<float>(),
         args["essential_error_initial"].as<float>(),
-        args["function_tolerance"].as<float>(),
+        args["tolerance_function"].as<float>(),
+        args["tolerance_gradient"].as<float>(),
+        args["tolerance_parameter"].as<float>(),
         args["test_ratio"].as<float>(),
         args["track_ratio"].as<float>()
     );

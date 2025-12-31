@@ -63,11 +63,11 @@ std::vector<cv::DMatch> select_matches(
     return dest;
 }
 
-std::unordered_map<int, int> create_map_query(const std::vector<cv::DMatch>& matches) {
+std::unordered_map<int, int> create_map_query(const std::vector<cv::DMatch>& matches, const size_t offset) {
     std::unordered_map<int, int> map_query;
 
     for (size_t i = 0; i < matches.size(); ++i) {
-        map_query.emplace(matches[i].queryIdx, static_cast<int>(i));
+        map_query.emplace(matches[i].queryIdx, static_cast<int>(i + offset));
     }
     return map_query;
 }
