@@ -64,7 +64,7 @@ Odometer::Odometer(
 Odometer::~Odometer() = default;
 
 std::vector<bool> Odometer::landmarks_to_freeze(
-    const std::shared_ptr<Keyframe>& keyframe
+    const std::shared_ptr<Keyframe> keyframe
 ) const {
     std::vector<bool> to_freeze(landmarks.size(), false);
 
@@ -77,7 +77,7 @@ std::vector<bool> Odometer::landmarks_to_freeze(
     return to_freeze;
 }
 
-std::unordered_map<int, int> Odometer::create_map(const std::vector<cv::DMatch>& matches, std::shared_ptr<Keyframe>& keyframe) const {
+std::unordered_map<int, int> Odometer::create_map(const std::vector<cv::DMatch>& matches, std::shared_ptr<Keyframe> keyframe) const {
     std::unordered_map<int, int> feature_to_landmark;
 
     for (size_t i = 0; i < matches.size(); ++i) {
@@ -88,13 +88,11 @@ std::unordered_map<int, int> Odometer::create_map(const std::vector<cv::DMatch>&
         }
         feature_to_landmark.emplace(matches[i].trainIdx, it->second);
     }
-    std::cout << "Manages to track " << feature_to_landmark.size() << " existant landmarks" << std::endl;
-
     return feature_to_landmark;
 }
 
 std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> Odometer::track_or_chart(
-    const std::shared_ptr<Keyframe>& keyframe,
+    const std::shared_ptr<Keyframe> keyframe,
     const std::vector<cv::DMatch>& matches
 ) const {
     std::vector<cv::DMatch> matches_to_track;
@@ -207,8 +205,11 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
     if (!is_initialized) {
         throw std::runtime_error("Call initialize() with two frames before processing frames.");
     }
+    std::cout << std::endl;
+    std::cout << "To process frame [" << frame << "]" << std::endl;
+
     auto image = loader->operator[](frame);
-    auto& keyframe = keyframes.back();
+    auto keyframe = keyframes.back();
 
     auto [keypoints, descriptors] = extractor->extract(image);
 
@@ -229,8 +230,12 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
     rotations.emplace(frame, rotation);
     translations.emplace(frame, translation);
 
-    if (!allow_keyframe || track_ratio <= float(map_to_track.size()) / float(keyframe->feature_to_landmark.size())) {
-        std::cout << "Skips keyframe creation for frame " << frame << std::endl;
+    if (
+        !allow_keyframe
+        || track_ratio <= float(map_to_track.size()) / float(keyframe->feature_to_landmark.size())
+        || frame - keyframe->frame < temporal_baseline
+    ) {
+        std::cout << "To skip keyframe creation for frame " << frame << std::endl;
         return;
     }
     std::cout << "To create keyframe for frame " << frame << std::endl;
@@ -262,19 +267,15 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
     keyframe->feature_to_landmark.insert(map_to_chart_keyframe.begin(), map_to_chart_keyframe.end());
     newframe->feature_to_landmark.insert(map_to_chart_newframe.begin(), map_to_chart_newframe.end());
 
+    if (newframe->feature_to_landmark.size() != map_to_track.size() + map_to_chart_newframe.size()) {
+        throw std::runtime_error("matches are likely not bijective");
+    }
+
     this->landmarks.insert(this->landmarks.end(), landmarks.begin(), landmarks.end());
     this->keyframes.push_back(newframe);
 
-    paint_projections(
-        loader->operator[](keyframe->frame),
-        keyframe->keypoints,
-        this->landmarks,
-        keyframe->feature_to_landmark,
-        intrinsics,
-        rotations.at(keyframe->frame),
-        translations.at(keyframe->frame),
-        write_path / ("projections_frame_" + std::to_string(frame) + "_keyframe_" + std::to_string(keyframe->frame) + ".png")
-    );
+    std::cout << "registers new keyframe with " << newframe->feature_to_landmark.size() << " landmark associations" << std::endl;
+
     paint_projections(
         image,
         keypoints,
@@ -293,16 +294,6 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
     bundle_adjustment(to_freeze);
 
     paint_projections(
-        loader->operator[](keyframe->frame),
-        keyframe->keypoints,
-        this->landmarks,
-        keyframe->feature_to_landmark,
-        intrinsics,
-        rotations.at(keyframe->frame),
-        translations.at(keyframe->frame),
-        write_path / ("projections_frame_" + std::to_string(frame) + "_keyframe_" + std::to_string(keyframe->frame) + "_bundle_adjustment.png")
-    );
-    paint_projections(
         image,
         keypoints,
         this->landmarks,
@@ -312,7 +303,6 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
         translation,
         write_path / ("projections_frame_" + std::to_string(frame) + "_bundle_adjustment.png")
     );
-    exit(0);
 }
 
 void Odometer::process_frames() {
@@ -326,7 +316,6 @@ void Odometer::process_frames() {
         indicators::option::Fill{"="},
         indicators::option::Lead{">"},
         indicators::option::End{"]"},
-        indicators::option::PrefixText{"process baseline frames:"}
     };
     for (size_t i = 1; i < temporal_baseline; ++i) {
         bar_a.tick();
@@ -339,7 +328,6 @@ void Odometer::process_frames() {
         indicators::option::Fill{"="},
         indicators::option::Lead{">"},
         indicators::option::End{"]"},
-        indicators::option::PrefixText{"process subsequent frames:"}
     };
     for (size_t i = temporal_baseline + 1; i < loader->size(); ++i) {
         bar_b.tick();
@@ -383,7 +371,7 @@ std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> Odometer::keypoin
 }
 
 std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>> Odometer::keypoints_to_landmarks(
-    const std::shared_ptr<Keyframe>& keyframe,
+    const std::shared_ptr<Keyframe> keyframe,
     const std::vector<cv::KeyPoint>& keypoints,
     const std::vector<cv::DMatch>& matches
 ) const {
@@ -457,7 +445,7 @@ std::tuple<Eigen::Quaterniond, Eigen::Quaterniond, Eigen::Vector3d, Eigen::Vecto
 }
 
 std::tuple<std::vector<cv::DMatch>, Eigen::Quaterniond, Eigen::Vector3d> Odometer::compute_pose(
-    const std::shared_ptr<Keyframe>& keyframe,
+    const std::shared_ptr<Keyframe> keyframe,
     const std::vector<cv::KeyPoint>& keypoints,
     const std::vector<cv::DMatch>& matches,
     const Eigen::Quaterniond& rotation,

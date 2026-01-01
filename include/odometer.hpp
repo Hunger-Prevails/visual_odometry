@@ -86,12 +86,12 @@ public:
     const std::vector<Eigen::Vector3d> getTranslations() const;
 
 protected:
-    std::vector<bool> landmarks_to_freeze(const std::shared_ptr<Keyframe>& keyframe) const;
+    std::vector<bool> landmarks_to_freeze(const std::shared_ptr<Keyframe> keyframe) const;
 
-    std::unordered_map<int, int> create_map(const std::vector<cv::DMatch>& matches, std::shared_ptr<Keyframe>& keyframe) const;
+    std::unordered_map<int, int> create_map(const std::vector<cv::DMatch>& matches, std::shared_ptr<Keyframe> keyframe) const;
 
     std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> track_or_chart(
-        const std::shared_ptr<Keyframe>& keyframe,
+        const std::shared_ptr<Keyframe> keyframe,
         const std::vector<cv::DMatch>& matches
     ) const;
 
@@ -102,7 +102,7 @@ protected:
     ) const;
 
     std::tuple<std::vector<cv::DMatch>, Eigen::Quaterniond, Eigen::Vector3d> compute_pose(
-        const std::shared_ptr<Keyframe>& keyframe,
+        const std::shared_ptr<Keyframe> keyframe,
         const std::vector<cv::KeyPoint>& keypoints,
         const std::vector<cv::DMatch>& matches,
         const Eigen::Quaterniond& rotation,
@@ -136,7 +136,7 @@ protected:
     ) const;
 
     std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>> keypoints_to_landmarks(
-        const std::shared_ptr<Keyframe>& keyframe,
+        const std::shared_ptr<Keyframe> keyframe,
         const std::vector<cv::KeyPoint>& keypoints,
         const std::vector<cv::DMatch>& matches
     ) const;
