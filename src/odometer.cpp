@@ -64,6 +64,24 @@ Odometer::Odometer(
 
 Odometer::~Odometer() = default;
 
+void Odometer::show_keyframe(
+    const std::shared_ptr<Keyframe> keyframe,
+    const fs::path& write_path
+) const {
+    auto image = loader->operator[](keyframe->frame);
+
+    show_projections(
+        image,
+        keyframe->feature_to_landmark,
+        keyframe->keypoints,
+        this->landmarks,
+        intrinsics,
+        rotations.at(keyframe->frame),
+        translations.at(keyframe->frame),
+        write_path
+    );
+}
+
 std::vector<bool> Odometer::landmarks_to_freeze(
     const std::shared_ptr<Keyframe> keyframe
 ) const {
@@ -157,47 +175,38 @@ void Odometer::initialize() {
     auto map_a = create_map_query(matches_viable);
     auto map_b = create_map_train(matches_viable);
 
-    paint_projections(
-        image_b,
-        keypoints_b,
-        landmarks,
-        map_b,
-        intrinsics,
-        rotation_b,
-        translation_b,
-        write_path / "projections_initial.png"
-    );
-
-    bundle_adjustment_initial(
-        keypoints_a,
-        keypoints_b,
-        matches_viable,
-        landmarks,
-        rotation_a,
-        rotation_b,
-        translation_a,
-        translation_b
-    );
-
-    paint_projections(
-        image_b,
-        keypoints_b,
-        landmarks,
-        map_b,
-        intrinsics,
-        rotation_b,
-        translation_b,
-        write_path / "projections_initial_bundle_adjustment.png"
-    );
-
     this->landmarks = std::move(landmarks);
-    this->keyframes.push_back(std::make_shared<Keyframe>(0, keypoints_a, descriptors_a, map_a));
-    this->keyframes.push_back(std::make_shared<Keyframe>(temporal_baseline, keypoints_b, descriptors_b, map_b));
+
+    auto frame_a = std::make_shared<Keyframe>(0, keypoints_a, descriptors_a, map_a);
+    auto frame_b = std::make_shared<Keyframe>(temporal_baseline, keypoints_b, descriptors_b, map_b);
 
     rotations.emplace(0, rotation_a);
     rotations.emplace(temporal_baseline, rotation_b);
     translations.emplace(0, translation_a);
     translations.emplace(temporal_baseline, translation_b);
+
+    show_keyframe(
+        frame_a,
+        write_path / "projections_initial_a.png"
+    );
+    show_keyframe(
+        frame_b,
+        write_path / "projections_initial_b.png"
+    );
+
+    bundle_adjustment_initial(frame_a, frame_b);
+
+    show_keyframe(
+        frame_a,
+        write_path / "projections_initial_bundle_adjustment_a.png"
+    );
+    show_keyframe(
+        frame_b,
+        write_path / "projections_initial_bundle_adjustment_b.png"
+    );
+
+    this->keyframes.push_back(frame_a);
+    this->keyframes.push_back(frame_b);
 
     std::cout << "Completes initialization with " << this->landmarks.size() << " landmarks" << std::endl;
 }
@@ -281,14 +290,8 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
 
     std::cout << "registers new keyframe with " << newframe->feature_to_landmark.size() << " landmark associations" << std::endl;
 
-    paint_projections(
-        image,
-        keypoints,
-        this->landmarks,
-        newframe->feature_to_landmark,
-        intrinsics,
-        rotation,
-        translation,
+    show_keyframe(
+        newframe,
         write_path / ("projections_frame_" + std::to_string(frame) + ".png")
     );
 
@@ -298,14 +301,8 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
 
     bundle_adjustment(to_freeze);
 
-    paint_projections(
-        image,
-        keypoints,
-        this->landmarks,
-        newframe->feature_to_landmark,
-        intrinsics,
-        rotation,
-        translation,
+    show_keyframe(
+        newframe,
         write_path / ("projections_frame_" + std::to_string(frame) + "_bundle_adjustment.png")
     );
 }
@@ -617,49 +614,36 @@ std::pair<std::vector<Eigen::Vector3d>, std::vector<cv::DMatch>> Odometer::trian
     return {landmarks, matches_viable};
 }
 
-void Odometer::bundle_adjustment_initial(
-    const std::vector<cv::KeyPoint>& keypoints_a,
-    const std::vector<cv::KeyPoint>& keypoints_b,
-    const std::vector<cv::DMatch>& matches,
-    std::vector<Eigen::Vector3d>& landmarks,
-    Eigen::Quaterniond& rotation_a,
-    Eigen::Quaterniond& rotation_b,
-    Eigen::Vector3d& translation_a,
-    Eigen::Vector3d& translation_b
-) const {
-    if (landmarks.size() != matches.size()) {
-        throw std::invalid_argument("Number of landmarks must be equal to number of matches");
-    }
-
-    auto [points_a, points_b] = keypoints_to_keypoints(keypoints_a, keypoints_b, matches);
+void Odometer::bundle_adjustment_initial(std::shared_ptr<Keyframe> frame_a, std::shared_ptr<Keyframe> frame_b) {
 
     auto problem = ceres::Problem();
     auto loss_function = new ceres::HuberLoss(1.0);
 
-    problem.AddParameterBlock(rotation_b.coeffs().data(), 4, new ceres::EigenQuaternionManifold());
-    problem.AddParameterBlock(translation_b.data(), 3, new ceres::SphereManifold<3>());
-
-    for (size_t i = 0; i < matches.size(); ++i) {
+    for (auto [feature, landmark]: frame_a->feature_to_landmark) {
         problem.AddResidualBlock(
             new ceres::AutoDiffCostFunction<ProjectionErrorLandmark, 2, 3>(
                 new ProjectionErrorLandmark(
-                    points_a[i], intrinsics, rotation_a, translation_a
+                    frame_a->keypoints[feature].pt, intrinsics, rotations.at(frame_a->frame), translations.at(frame_a->frame)
                 )
             ),
             loss_function,
-            landmarks[i].data()
+            landmarks[landmark].data()
         );
+    }
+    problem.AddParameterBlock(rotations.at(frame_b->frame).coeffs().data(), 4, new ceres::EigenQuaternionManifold());
+    problem.AddParameterBlock(translations.at(frame_b->frame).data(), 3, new ceres::SphereManifold<3>());
 
+    for (auto [feature, landmark]: frame_b->feature_to_landmark) {
         problem.AddResidualBlock(
             new ceres::AutoDiffCostFunction<ProjectionError, 2, 3, 4, 3>(
                 new ProjectionError(
-                    points_b[i], intrinsics
+                    frame_b->keypoints[feature].pt, intrinsics
                 )
             ),
             loss_function,
-            landmarks[i].data(),
-            rotation_b.coeffs().data(),
-            translation_b.data()
+            landmarks[landmark].data(),
+            rotations.at(frame_b->frame).coeffs().data(),
+            translations.at(frame_b->frame).data()
         );
     }
     ceres::Solver::Options options;
@@ -682,7 +666,7 @@ void Odometer::bundle_adjustment(std::vector<bool>& to_freeze) {
     auto problem = ceres::Problem();
     auto loss_function = new ceres::HuberLoss(1.0);
 
-    for (auto& keyframe: keyframes) {
+    for (auto keyframe: keyframes) {
         auto& rotation = rotations.at(keyframe->frame);
         auto& translation = translations.at(keyframe->frame);
 

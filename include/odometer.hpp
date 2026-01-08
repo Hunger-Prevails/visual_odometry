@@ -79,6 +79,10 @@ public:
     );
     ~Odometer();
 
+    void show_keyframe(
+        const std::shared_ptr<Keyframe> keyframe,
+        const fs::path& write_path
+    ) const;
     void initialize();
     void process_frame(int frame, bool allow_keyframe = true);
     void process_frames();
@@ -150,16 +154,7 @@ protected:
         const std::vector<cv::DMatch>& matches
     ) const;
 
-    void bundle_adjustment_initial(
-        const std::vector<cv::KeyPoint>& keypoints_a,
-        const std::vector<cv::KeyPoint>& keypoints_b,
-        const std::vector<cv::DMatch>& matches,
-        std::vector<Eigen::Vector3d>& landmarks,
-        Eigen::Quaterniond& rotation_a,
-        Eigen::Quaterniond& rotation_b,
-        Eigen::Vector3d& translation_a,
-        Eigen::Vector3d& translation_b
-    ) const;
+    void bundle_adjustment_initial(std::shared_ptr<Keyframe> frame_a, std::shared_ptr<Keyframe> frame_b);
 
     void bundle_adjustment(std::vector<bool>& to_freeze);
 };

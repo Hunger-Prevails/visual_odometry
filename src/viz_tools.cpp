@@ -36,11 +36,11 @@ void paint_matches(
     cv::imwrite(write_path.string(), dest);
 }
 
-void paint_projections(
+void show_projections(
     const cv::Mat& image,
+    const std::unordered_map<int, int>& feature_to_landmark,
     const std::vector<cv::KeyPoint>& keypoints,
     const std::vector<Eigen::Vector3d>& landmarks,
-    const std::unordered_map<int, int>& feature_to_landmark,
     const Eigen::Matrix3d& intrinsics,
     const Eigen::Quaterniond& rotation,
     const Eigen::Vector3d& translation,
