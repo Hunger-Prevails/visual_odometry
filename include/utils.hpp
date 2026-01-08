@@ -10,17 +10,20 @@ std::pair<Eigen::Quaterniond, Eigen::Vector3d> to_eigen(
     const cv::Mat& translation
 );
 
-std::pair<cv::Mat, cv::Mat> from_eigen(
-    const Eigen::Quaterniond& rotation,
-    const Eigen::Vector3d& translation
-);
+Eigen::MatrixX2d to_eigen(const std::vector<cv::Point2f>& keypoints);
+Eigen::MatrixX3d to_eigen(const std::vector<cv::Point3f>& landmarks);
+
+std::pair<cv::Mat, cv::Mat> from_eigen(const Eigen::Quaterniond& rotation, const Eigen::Vector3d& translation);
+
+std::vector<cv::Point2f> from_eigen(const Eigen::MatrixX2d& keypoints);
+std::vector<cv::Point3f> from_eigen(const Eigen::MatrixX3d& landmarks);
 
 std::vector<cv::DMatch> funnel_matches(
     const std::vector<cv::DMatch>& matches,
     const cv::Mat& mask
 );
 
-std::vector<cv::DMatch> select_matches(
+std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> select_matches(
     const std::vector<cv::DMatch>& matches,
     const cv::Mat& inliers
 );
@@ -34,6 +37,8 @@ Eigen::Matrix3d to_essentials(
     const Eigen::Vector3d& translation_a,
     const Eigen::Vector3d& translation_b
 );
+
+Eigen::MatrixX2d hnormalize(const Eigen::MatrixX3d& points);
 
 Eigen::MatrixX3d to_homogeneous(std::vector<cv::Point2f>& points);
 

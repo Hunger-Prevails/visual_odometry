@@ -28,6 +28,7 @@ class Odometer {
 protected:
     static const int perspective_iterations;
     static const float perspective_error;
+    static const float perspective_error_rescue;
     static const float perspective_confidence;
 
     static const Eigen::Quaterniond rotation_initial;
@@ -101,7 +102,7 @@ protected:
         const std::vector<cv::DMatch>& matches
     ) const;
 
-    std::tuple<std::vector<cv::DMatch>, Eigen::Quaterniond, Eigen::Vector3d> compute_pose(
+    std::tuple<Eigen::Quaterniond, Eigen::Vector3d, std::vector<cv::DMatch>, std::vector<cv::DMatch>> compute_pose(
         const std::shared_ptr<Keyframe> keyframe,
         const std::vector<cv::KeyPoint>& keypoints,
         const std::vector<cv::DMatch>& matches,
@@ -117,6 +118,14 @@ protected:
         const Eigen::Quaterniond& rotation_b,
         const Eigen::Vector3d& translation_a,
         const Eigen::Vector3d& translation_b
+    ) const;
+
+    std::vector<cv::DMatch> rescue_matches(
+        const std::shared_ptr<Keyframe> keyframe,
+        const std::vector<cv::KeyPoint>& keypoints,
+        const std::vector<cv::DMatch>& matches,
+        const Eigen::Quaterniond& rotation,
+        const Eigen::Vector3d& translation
     ) const;
 
     std::pair<std::vector<Eigen::Vector3d>, std::vector<cv::DMatch>> triangulate(
@@ -135,7 +144,7 @@ protected:
         const std::vector<cv::DMatch>& matches
     ) const;
 
-    std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>> keypoints_to_landmarks(
+    std::tuple<std::vector<cv::Point2f>, Eigen::MatrixX3d> keypoints_to_landmarks(
         const std::shared_ptr<Keyframe> keyframe,
         const std::vector<cv::KeyPoint>& keypoints,
         const std::vector<cv::DMatch>& matches

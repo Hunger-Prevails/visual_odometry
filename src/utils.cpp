@@ -19,6 +19,22 @@ std::pair<Eigen::Quaterniond, Eigen::Vector3d> to_eigen(
     return {Eigen::Quaterniond(rotation_eigen), translation_eigen};
 }
 
+Eigen::MatrixX2d to_eigen(const std::vector<cv::Point2f>& landmarks) {
+    Eigen::Map<const Eigen::Matrix<float, Eigen::Dynamic, 2, Eigen::RowMajor>> map(
+        reinterpret_cast<const float*>(landmarks.data()), landmarks.size(), 2
+    );
+
+    return map.cast<double>();
+}
+
+Eigen::MatrixX3d to_eigen(const std::vector<cv::Point3f>& landmarks) {
+    Eigen::Map<const Eigen::Matrix<float, Eigen::Dynamic, 3, Eigen::RowMajor>> map(
+        reinterpret_cast<const float*>(landmarks.data()), landmarks.size(), 3
+    );
+
+    return map.cast<double>();
+}
+
 std::pair<cv::Mat, cv::Mat> from_eigen(
     const Eigen::Quaterniond& rotation,
     const Eigen::Vector3d& translation
@@ -30,6 +46,30 @@ std::pair<cv::Mat, cv::Mat> from_eigen(
     cv::eigen2cv(translation, translation_mat);
 
     return {rotation_mat, translation_mat};
+}
+
+std::vector<cv::Point2f> from_eigen(const Eigen::MatrixX2d& keypoints) {
+    std::vector<cv::Point2f> points(keypoints.rows());
+
+    Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, 2, Eigen::RowMajor>> map(
+        reinterpret_cast<float*>(points.data()), keypoints.rows(), 2
+    );
+
+    map = keypoints.cast<float>();
+
+    return points;
+}
+
+std::vector<cv::Point3f> from_eigen(const Eigen::MatrixX3d& landmarks) {
+    std::vector<cv::Point3f> points(landmarks.rows());
+
+    Eigen::Map<Eigen::Matrix<float, Eigen::Dynamic, 3, Eigen::RowMajor>> map(
+        reinterpret_cast<float*>(points.data()), landmarks.rows(), 3
+    );
+
+    map = landmarks.cast<float>();
+
+    return points;
 }
 
 std::vector<cv::DMatch> funnel_matches(
@@ -49,18 +89,30 @@ std::vector<cv::DMatch> funnel_matches(
     return dest;
 }
 
-std::vector<cv::DMatch> select_matches(
+std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> select_matches(
     const std::vector<cv::DMatch>& matches,
     const cv::Mat& inliers
 ) {
-    std::vector<cv::DMatch> dest;
-
-    dest.reserve(inliers.rows);
+    std::vector<bool> mask(matches.size(), false);
 
     for (size_t i = 0; i < inliers.rows; ++i) {
-        dest.push_back(matches[inliers.at<int>(i)]);
+        mask[inliers.at<int>(i)] = true;
     }
-    return dest;
+
+    std::vector<cv::DMatch> matches_inliers;
+    std::vector<cv::DMatch> matches_outliers;
+
+    matches_inliers.reserve(inliers.rows);
+    matches_outliers.reserve(matches.size() - inliers.rows);
+
+    for (size_t i = 0; i < matches.size(); ++i) {
+        if (mask[i]) {
+            matches_inliers.push_back(matches[i]);
+        } else {
+            matches_outliers.push_back(matches[i]);
+        }
+    }
+    return {matches_inliers, matches_outliers};
 }
 
 std::unordered_map<int, int> create_map_query(const std::vector<cv::DMatch>& matches, const size_t offset) {
@@ -100,6 +152,12 @@ Eigen::Matrix3d to_essentials(
     essentials.col(2) = translation.cross(rotation_matrix.col(2));
 
     return essentials;
+}
+
+Eigen::MatrixX2d hnormalize(const Eigen::MatrixX3d& points) {
+    return (
+        points.leftCols<2>().array().colwise() / points.col(2).array()
+    ).matrix();
 }
 
 Eigen::MatrixX3d to_homogeneous(std::vector<cv::Point2f>& points) {

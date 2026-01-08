@@ -16,6 +16,7 @@
 
 const int Odometer::perspective_iterations(100);
 const float Odometer::perspective_error(2.0);
+const float Odometer::perspective_error_rescue(3.0);
 const float Odometer::perspective_confidence(0.99);
 
 const Eigen::Quaterniond Odometer::rotation_initial = Eigen::Quaterniond::Identity();
@@ -217,13 +218,17 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
 
     auto [matches_to_track, matches_to_chart] = track_or_chart(keyframe, matches);
 
-    auto [matches_to_track_inliers, rotation, translation] = compute_pose(
+    auto [rotation, translation, matches_to_track_inliers, matches_to_track_outliers] = compute_pose(
         keyframe,
         keypoints,
         matches_to_track,
         rotations.at(frame - 1),
         translations.at(frame - 1)
     );
+
+    auto matches_to_track_rescue = rescue_matches(keyframe, keypoints, matches_to_track_outliers, rotation, translation);
+
+    matches_to_track_inliers.insert(matches_to_track_inliers.end(), matches_to_track_rescue.begin(), matches_to_track_rescue.end());
 
     auto map_to_track = create_map(matches_to_track_inliers, keyframe);
 
@@ -370,15 +375,20 @@ std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point2f>> Odometer::keypoin
     return {points_a, points_b};
 }
 
-std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>> Odometer::keypoints_to_landmarks(
+std::tuple<std::vector<cv::Point2f>, Eigen::MatrixX3d> Odometer::keypoints_to_landmarks(
     const std::shared_ptr<Keyframe> keyframe,
     const std::vector<cv::KeyPoint>& keypoints,
     const std::vector<cv::DMatch>& matches
 ) const {
     std::vector<cv::Point2f> points;
-    std::vector<cv::Point3f> landmarks;
 
-    for (auto& match: matches) {
+    points.reserve(matches.size());
+
+    Eigen::MatrixX3d landmarks(matches.size(), 3);
+
+    for (size_t i = 0; i < matches.size(); ++i) {
+        auto& match = matches[i];
+
         auto iterator = keyframe->feature_to_landmark.find(match.queryIdx);
 
         if (iterator == keyframe->feature_to_landmark.end()) {
@@ -386,13 +396,7 @@ std::tuple<std::vector<cv::Point2f>, std::vector<cv::Point3f>> Odometer::keypoin
         }
         points.push_back(keypoints[match.trainIdx].pt);
 
-        auto landmark = this->landmarks[iterator->second];
-
-        landmarks.emplace_back(
-            static_cast<float>(landmark.x()),
-            static_cast<float>(landmark.y()),
-            static_cast<float>(landmark.z())
-        );
+        landmarks.row(i) = this->landmarks[iterator->second];
     }
 
     return {points, landmarks};
@@ -444,7 +448,7 @@ std::tuple<Eigen::Quaterniond, Eigen::Quaterniond, Eigen::Vector3d, Eigen::Vecto
     };
 }
 
-std::tuple<std::vector<cv::DMatch>, Eigen::Quaterniond, Eigen::Vector3d> Odometer::compute_pose(
+std::tuple<Eigen::Quaterniond, Eigen::Vector3d, std::vector<cv::DMatch>, std::vector<cv::DMatch>> Odometer::compute_pose(
     const std::shared_ptr<Keyframe> keyframe,
     const std::vector<cv::KeyPoint>& keypoints,
     const std::vector<cv::DMatch>& matches,
@@ -455,6 +459,8 @@ std::tuple<std::vector<cv::DMatch>, Eigen::Quaterniond, Eigen::Vector3d> Odomete
 
     auto [rotation_mat, translation_mat] = from_eigen(rotation, translation);
 
+    auto landmarks_mat = from_eigen(landmarks);
+
     cv::Mat inliers;
     cv::Mat intrinsics;
     cv::eigen2cv(this->intrinsics, intrinsics);
@@ -463,7 +469,7 @@ std::tuple<std::vector<cv::DMatch>, Eigen::Quaterniond, Eigen::Vector3d> Odomete
     cv::Rodrigues(rotation_mat, rotation_vector);
 
     auto success = cv::solvePnPRansac(
-        landmarks,
+        landmarks_mat,
         points,
         intrinsics,
         cv::Mat(),
@@ -485,7 +491,9 @@ std::tuple<std::vector<cv::DMatch>, Eigen::Quaterniond, Eigen::Vector3d> Odomete
 
     auto [rotation_eigen, translation_eigen] = to_eigen(rotation_mat, translation_mat);
 
-    return {select_matches(matches, inliers), rotation_eigen, translation_eigen};
+    auto [matches_inliers, matches_outliers] = select_matches(matches, inliers);
+
+    return {rotation_eigen, translation_eigen, matches_inliers, matches_outliers};
 }
 
 std::vector<cv::DMatch> Odometer::epipolar_check(
@@ -517,6 +525,37 @@ std::vector<cv::DMatch> Odometer::epipolar_check(
     std::cout << "Found " << matches_inliers.size() << " inlier keypoint matches after epipolar check" << std::endl;
 
     return matches_inliers;
+}
+
+std::vector<cv::DMatch> Odometer::rescue_matches(
+    const std::shared_ptr<Keyframe> keyframe,
+    const std::vector<cv::KeyPoint>& keypoints,
+    const std::vector<cv::DMatch>& matches,
+    const Eigen::Quaterniond& rotation,
+    const Eigen::Vector3d& translation
+) const {
+    std::vector<cv::DMatch> matches_to_rescue;
+
+    auto [points, landmarks] = keypoints_to_landmarks(keyframe, keypoints, matches);
+
+    auto points_eigen = to_eigen(points);
+
+    auto landmarks_camera = (rotation.toRotationMatrix() * landmarks.transpose()).colwise() + translation;
+
+    auto projections = hnormalize((intrinsics * landmarks_camera).transpose());
+
+    auto distance = (projections - points_eigen).rowwise().norm();
+
+    auto mask = (distance.array() < Odometer::perspective_error_rescue).matrix();
+
+    for (size_t i = 0; i < matches.size(); ++i) {
+        if (!mask(i)) continue;
+
+        matches_to_rescue.push_back(matches[i]);
+    }
+    std::cout << "To rescue " << matches_to_rescue.size() << " matches after perspective-n-point reprojection check" << std::endl;
+
+    return matches_to_rescue;
 }
 
 std::pair<std::vector<Eigen::Vector3d>, std::vector<cv::DMatch>> Odometer::triangulate(
