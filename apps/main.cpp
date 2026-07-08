@@ -42,6 +42,7 @@ int main(int argc, char *argv[])
 
     options.add_options()("sequence", "Path to the image sequence to process", cxxopts::value<fs::path>());
     options.add_options()("write_path", "Path to write outputs to", cxxopts::value<fs::path>()->default_value("outputs"));
+    options.add_options()("intrinsics", "Path to intrinsics file", cxxopts::value<fs::path>()->default_value("intrinsics.json"));
     options.add_options()("camera", "Name of camera", cxxopts::value<std::string>()->default_value("default"));
     options.add_options()("count_features", "Maximum numbers of features to detect on a frame", cxxopts::value<int>()->default_value("2000"));
     options.add_options()("count_keyframes", "Number of keyframes to maintain in memory", cxxopts::value<int>()->default_value("2"));
@@ -59,19 +60,16 @@ int main(int argc, char *argv[])
 
     std::cout << "to process sequence " << args["sequence"].as<fs::path>() << std::endl;
 
-    std::shared_ptr<ImageLoader> loader = std::make_shared<ImageLoader>(args["sequence"].as<fs::path>() / "rgb");
+    std::unique_ptr<ImageLoader> loader = std::make_unique<ImageLoader>(args["sequence"].as<fs::path>() / "rgb");
 
-    auto intrinsics_path = fs::canonical(argv[0]).parent_path() / "../res/intrinsics.json";
-    auto write_path = fs::canonical(argv[0]).parent_path() / args["write_path"].as<fs::path>();
+    auto intrinsics = load_intrinsics(args["intrinsics"].as<fs::path>(), args["camera"].as<std::string>());
 
-    auto intrinsics = load_intrinsics(intrinsics_path, args["camera"].as<std::string>());
-
-    std::cout << "to assume intrinsics matrix:\n" << intrinsics << std::endl;
+    std::cout << "to assume intrinsics matrix:" << std::endl << intrinsics << std::endl;
 
     auto odometer = std::make_unique<Odometer>(
         intrinsics,
-        loader,
-        write_path,
+        std::move(loader),
+        fs::absolute(args["write_path"].as<fs::path>()),
         args["count_features"].as<int>(),
         args["count_keyframes"].as<int>(),
         args["temporal_baseline"].as<int>(),
@@ -87,17 +85,20 @@ int main(int argc, char *argv[])
 
     std::cout << "to start visual odometry" << std::endl;
 
-    odometer->initialize();
-    odometer->process_frames();
+    try {
+        odometer->initialize();
+        odometer->process_frames();
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
 
     auto rotations = odometer->getRotations();
     auto translations = odometer->getTranslations();
 
     if (rotations.size() != translations.size()) {
         throw std::runtime_error("Mismatch between number of rotations and translations.");
-    }
-    if (rotations.size() != loader->size()) {
-        throw std::runtime_error("Mismatch between number of poses and number of images.");
     }
     return 0;
 }

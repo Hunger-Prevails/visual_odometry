@@ -58,5 +58,11 @@ void show_projections(
 
         cv::line(dest, keypoints[feature].pt, projection, cv::Scalar(255, 255, 0), 1);
     }
-    cv::imwrite(write_path.string(), dest);
+    auto ret = cv::imwrite(write_path.string(), dest);
+
+    if (!ret) {
+        std::cerr << "Failed to write image with projections to " << write_path << std::endl;
+
+        throw std::runtime_error("Failed to write image with projections");
+    }
 }

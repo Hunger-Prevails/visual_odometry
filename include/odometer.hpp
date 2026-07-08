@@ -50,7 +50,7 @@ protected:
     fs::path write_path;
 
     Eigen::Matrix3d intrinsics;
-    std::shared_ptr<ImageLoader> loader;
+    std::unique_ptr<ImageLoader> loader;
     std::unique_ptr<Extractor> extractor;
     std::unique_ptr<Matcher> matcher;
 
@@ -63,7 +63,7 @@ protected:
 public:
     Odometer(
         Eigen::Matrix3d intrinsics,
-        std::shared_ptr<ImageLoader> loader,
+        std::unique_ptr<ImageLoader> loader,
         fs::path write_path,
         int count_features = 2000,
         int count_keyframes = 2,

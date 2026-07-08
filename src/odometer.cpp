@@ -24,7 +24,7 @@ const Eigen::Vector3d Odometer::translation_initial = Eigen::Vector3d::Zero();
 
 Odometer::Odometer(
     Eigen::Matrix3d intrinsics,
-    std::shared_ptr<ImageLoader> loader,
+    std::unique_ptr<ImageLoader> loader,
     fs::path write_path,
     int count_features,
     int count_keyframes,
@@ -40,7 +40,7 @@ Odometer::Odometer(
 ):
     is_initialized(false),
     intrinsics(intrinsics),
-    loader(loader),
+    loader(std::move(loader)),
     write_path(write_path),
     count_keyframes(count_keyframes),
     temporal_baseline(temporal_baseline),
@@ -52,7 +52,7 @@ Odometer::Odometer(
     tolerance_parameter(tolerance_parameter),
     track_ratio(track_ratio)
 {
-    if (loader->size() <= temporal_baseline) {
+    if (this->loader->size() <= temporal_baseline) {
         throw std::invalid_argument("There has to be at least as many frames as the temporal_baseline");
     }
     extractor = std::make_unique<Extractor>(count_features);
