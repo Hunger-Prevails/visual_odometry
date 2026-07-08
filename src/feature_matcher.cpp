@@ -56,8 +56,6 @@ std::vector<cv::DMatch> Matcher::match_knn(cv::Mat& descriptors_a, cv::Mat& desc
     }
     matcher->knnMatch(descriptors_a, descriptors_b, matches_knn, Matcher::n_neighbors);
 
-    std::cout << "Found " << matches_knn.size() << " initial matches" << std::endl;
-
     std::vector<cv::DMatch> matches;
 
     for (size_t i = 0; i < matches_knn.size(); i++) {
@@ -70,11 +68,9 @@ std::vector<cv::DMatch> Matcher::match_knn(cv::Mat& descriptors_a, cv::Mat& desc
             }
         }
     }
-    std::cout << "To keep " << matches.size() << " matches after ratio test" << std::endl;
-
     auto matches_bijective = enforce_bijection(matches);
 
-    std::cout << "To keep " << matches_bijective.size() << " bijective matches after bijection enforcement" << std::endl;
+    std::cout << "to keep [" << matches_bijective.size() << " | " << matches_knn.size() << "] initial matches" << std::endl;
 
     return matches_bijective;
 }

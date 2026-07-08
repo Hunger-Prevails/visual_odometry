@@ -126,8 +126,7 @@ std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> Odometer::track_or_c
         }
         matches_to_track.push_back(match);
     }
-    std::cout << "to track " << matches_to_track.size() << " matches" << std::endl;
-    std::cout << "to chart " << matches_to_chart.size() << " matches" << std::endl;
+    std::cout << "to track " << matches_to_track.size() << " and chart " << matches_to_chart.size() << " matches" << std::endl;
 
     return {matches_to_track, matches_to_chart};
 }
@@ -208,7 +207,7 @@ void Odometer::initialize() {
     this->keyframes.push_back(frame_a);
     this->keyframes.push_back(frame_b);
 
-    std::cout << "Completes initialization with " << this->landmarks.size() << " landmarks" << std::endl;
+    std::cout << "=> completes initialization with " << this->landmarks.size() << " landmarks" << std::endl;
 }
 
 void Odometer::process_frame(int frame, bool allow_keyframe) {
@@ -216,7 +215,7 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
         throw std::runtime_error("Call initialize() with two frames before processing frames.");
     }
     std::cout << std::endl;
-    std::cout << "To process frame [" << frame << "]" << std::endl;
+    std::cout << "=> to process frame [" << frame << "]" << std::endl;
 
     auto image = loader->operator[](frame);
     auto keyframe = keyframes.back();
@@ -244,15 +243,18 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
     rotations.emplace(frame, rotation);
     translations.emplace(frame, translation);
 
+    std::cout << "was able to track [" << map_to_track.size() << " | ";
+    std::cout << keyframe->feature_to_landmark.size() << "] landmarks" << std::endl;
+
     if (
         !allow_keyframe
         || track_ratio <= float(map_to_track.size()) / float(keyframe->feature_to_landmark.size())
         || frame - keyframe->frame < temporal_baseline
     ) {
-        std::cout << "To skip keyframe creation for frame " << frame << std::endl;
+        std::cout << "=> to skip keyframe creation for frame " << frame << std::endl;
         return;
     }
-    std::cout << "To create keyframe for frame " << frame << std::endl;
+    std::cout << "=> to create keyframe for frame " << frame << std::endl;
 
     auto newframe = std::make_shared<Keyframe>(frame, keypoints, descriptors, map_to_track);
 
@@ -336,7 +338,7 @@ void Odometer::process_frames() {
         process_frame(i);
     }
 
-    std::cout << "Completes visual odometry" << std::endl;
+    std::cout << "=> completes visual odometry" << std::endl;
 }
 
 const std::vector<Eigen::Quaterniond> Odometer::getRotations() const {
@@ -428,7 +430,7 @@ std::tuple<Eigen::Quaterniond, Eigen::Quaterniond, Eigen::Vector3d, Eigen::Vecto
 
     int inliers = cv::recoverPose(essentials, points_a, points_b, intrinsics, rotation, translation, mask);
 
-    std::cout << "Found " << inliers << " inlier keypoint matches after essential matrix recovery" << std::endl;
+    std::cout << "=> finds " << inliers << " inlier keypoint matches after essential matrix recovery" << std::endl;
 
     auto matches_inliers = funnel_matches(matches, mask);
 
@@ -484,7 +486,7 @@ std::tuple<Eigen::Quaterniond, Eigen::Vector3d, std::vector<cv::DMatch>, std::ve
     }
     cv::Rodrigues(rotation_vector, rotation_mat);
 
-    std::cout << "Found " << inliers.rows << " inlier keypoint matches after perspective-n-point" << std::endl;
+    std::cout << "=> finds " << inliers.rows << " inlier keypoint matches after perspective-n-point" << std::endl;
 
     auto [rotation_eigen, translation_eigen] = to_eigen(rotation_mat, translation_mat);
 
@@ -519,7 +521,7 @@ std::vector<cv::DMatch> Odometer::epipolar_check(
 
         matches_inliers.push_back(matches[i]);
     }
-    std::cout << "Found " << matches_inliers.size() << " inlier keypoint matches after epipolar check" << std::endl;
+    std::cout << "=> finds " << matches_inliers.size() << " inlier keypoint matches after epipolar check" << std::endl;
 
     return matches_inliers;
 }
@@ -550,7 +552,7 @@ std::vector<cv::DMatch> Odometer::rescue_matches(
 
         matches_to_rescue.push_back(matches[i]);
     }
-    std::cout << "To rescue " << matches_to_rescue.size() << " matches after perspective-n-point reprojection check" << std::endl;
+    std::cout << "to rescue " << matches_to_rescue.size() << " matches after perspective-n-point reprojection check" << std::endl;
 
     return matches_to_rescue;
 }
@@ -609,7 +611,7 @@ std::pair<std::vector<Eigen::Vector3d>, std::vector<cv::DMatch>> Odometer::trian
         landmarks.push_back(landmark);
         matches_viable.push_back(matches[i]);
     }
-    std::cout << "Manages to triangulate " << landmarks.size() << " landmarks from viable matches" << std::endl;
+    std::cout << "manages to triangulate " << landmarks.size() << " landmarks from viable matches" << std::endl;
 
     return {landmarks, matches_viable};
 }
