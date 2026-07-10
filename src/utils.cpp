@@ -181,3 +181,23 @@ Eigen::VectorXd epipolar_products(
 
     return ((points_b.array() * lines.array()).rowwise().sum().abs() / norms.array()).matrix();
 }
+
+float compute_median_pixel_motion(
+    const std::vector<cv::KeyPoint>& keypoints_a,
+    const std::vector<cv::KeyPoint>& keypoints_b,
+    const std::vector<cv::DMatch>& matches
+) {
+    std::vector<float> distances;
+
+    distances.reserve(matches.size());
+
+    for (const auto& match: matches) {
+        auto& point_a = keypoints_a[match.queryIdx].pt;
+        auto& point_b = keypoints_b[match.trainIdx].pt;
+
+        distances.push_back(cv::norm(point_a - point_b));
+    }
+    std::nth_element(distances.begin(), distances.begin() + distances.size() / 2, distances.end());
+
+    return distances[distances.size() / 2];
+}

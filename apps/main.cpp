@@ -46,15 +46,24 @@ int main(int argc, char *argv[])
     options.add_options()("camera", "Name of camera", cxxopts::value<std::string>()->default_value("default"));
     options.add_options()("count_features", "Maximum numbers of features to detect on a frame", cxxopts::value<int>()->default_value("2000"));
     options.add_options()("count_keyframes", "Number of keyframes to maintain in memory", cxxopts::value<int>()->default_value("2"));
-    options.add_options()("temporal_baseline", "Number of frames between the two frames chosen for initialization", cxxopts::value<int>()->default_value("10"));
+    options.add_options()(
+        "temporal_baseline", "Number of frames between the two frames chosen for initialization", cxxopts::value<int>()->default_value("10")
+    );
     options.add_options()("essential_confidence", "Confidence for essential matrix estimation", cxxopts::value<float>()->default_value("0.99"));
     options.add_options()("essential_error", "Inlier tolerance for epipolar check", cxxopts::value<float>()->default_value("2.0"));
-    options.add_options()("essential_error_initial", "Inlier tolerance for epipolar check initially", cxxopts::value<float>()->default_value("1.0"));
+    options.add_options()(
+        "essential_error_initial", "Inlier tolerance for epipolar check initially", cxxopts::value<float>()->default_value("1.0")
+    );
     options.add_options()("tolerance_function", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-6"));
     options.add_options()("tolerance_gradient", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-10"));
     options.add_options()("tolerance_parameter", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-8"));
     options.add_options()("test_ratio", "Test ratio against which to filter matches", cxxopts::value<float>()->default_value("0.75"));
-    options.add_options()("track_ratio", "Ratio of existant landmarks to track for non-keyframes", cxxopts::value<float>()->default_value("0.6"));
+    options.add_options()("track_count", "Minimum number of landmarks a non-keyframe should track", cxxopts::value<int>()->default_value("50"));
+    options.add_options()("track_ratio", "Ratio of existant landmarks a non-keyframe should track", cxxopts::value<float>()->default_value("0.6"));
+    options.add_options()(
+        "median_pixel_motion", "Minimum median pixel motion a keyframe should observe", cxxopts::value<float>()->default_value("15.0")
+    );
+    options.add_options()("help", "Print help");
 
     auto args = options.parse(argc, argv);
 
@@ -80,7 +89,9 @@ int main(int argc, char *argv[])
         args["tolerance_gradient"].as<float>(),
         args["tolerance_parameter"].as<float>(),
         args["test_ratio"].as<float>(),
-        args["track_ratio"].as<float>()
+        args["track_count"].as<int>(),
+        args["track_ratio"].as<float>(),
+        args["median_pixel_motion"].as<float>()
     );
 
     std::cout << "to start visual odometry" << std::endl;

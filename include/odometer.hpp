@@ -45,7 +45,9 @@ protected:
     float tolerance_function;
     float tolerance_gradient;
     float tolerance_parameter;
+    int track_count;
     float track_ratio;
+    float median_pixel_motion;
 
     fs::path write_path;
 
@@ -59,6 +61,8 @@ protected:
 
     std::deque<std::shared_ptr<Keyframe>> keyframes;
     std::vector<Eigen::Vector3d> landmarks;
+
+    bool skip_keyframe(bool allow_keyframe, int track_count, float track_ratio, float median_pixel_motion) const;
 
 public:
     Odometer(
@@ -75,7 +79,9 @@ public:
         float tolerance_gradient = 1e-10,
         float tolerance_parameter = 1e-8,
         float test_ratio = 0.75,
-        float track_ratio = 0.6
+        int track_count = 50,
+        float track_ratio = 0.6,
+        float median_pixel_motion = 15.0
     );
     ~Odometer();
 

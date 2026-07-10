@@ -22,6 +22,17 @@ const float Odometer::perspective_confidence(0.99);
 const Eigen::Quaterniond Odometer::rotation_initial = Eigen::Quaterniond::Identity();
 const Eigen::Vector3d Odometer::translation_initial = Eigen::Vector3d::Zero();
 
+bool Odometer::skip_keyframe(bool allow_keyframe, int track_count, float track_ratio, float median_pixel_motion) const {
+    if (!allow_keyframe)
+        return true;
+
+    if (this->track_count < track_count && this->track_ratio < track_ratio) return true;
+
+    if (median_pixel_motion <= this->median_pixel_motion) return true;
+
+    return false;
+}
+
 Odometer::Odometer(
     Eigen::Matrix3d intrinsics,
     std::unique_ptr<ImageLoader> loader,
@@ -36,7 +47,9 @@ Odometer::Odometer(
     float tolerance_gradient,
     float tolerance_parameter,
     float test_ratio,
-    float track_ratio
+    int track_count,
+    float track_ratio,
+    float median_pixel_motion
 ):
     is_initialized(false),
     intrinsics(intrinsics),
@@ -50,7 +63,9 @@ Odometer::Odometer(
     tolerance_function(tolerance_function),
     tolerance_gradient(tolerance_gradient),
     tolerance_parameter(tolerance_parameter),
-    track_ratio(track_ratio)
+    track_count(track_count),
+    track_ratio(track_ratio),
+    median_pixel_motion(median_pixel_motion)
 {
     if (this->loader->size() <= temporal_baseline) {
         throw std::invalid_argument("There has to be at least as many frames as the temporal_baseline");
@@ -238,23 +253,24 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
 
     matches_to_track_inliers.insert(matches_to_track_inliers.end(), matches_to_track_rescue.begin(), matches_to_track_rescue.end());
 
-    auto map_to_track = create_map(matches_to_track_inliers, keyframe);
-
     rotations.emplace(frame, rotation);
     translations.emplace(frame, translation);
 
-    std::cout << "was able to track [" << map_to_track.size() << " | ";
+    std::cout << "was able to track [" << matches_to_track_inliers.size() << " | ";
     std::cout << keyframe->feature_to_landmark.size() << "] landmarks" << std::endl;
 
-    if (
-        !allow_keyframe
-        || track_ratio <= float(map_to_track.size()) / float(keyframe->feature_to_landmark.size())
-        || frame - keyframe->frame < temporal_baseline
-    ) {
+    auto track_count = matches_to_track_inliers.size();
+    auto track_ratio = float(track_count) / float(keyframe->feature_to_landmark.size());
+
+    auto median_pixel_motion = compute_median_pixel_motion(keyframe->keypoints, keypoints, matches_to_track_inliers);
+
+    if (skip_keyframe(allow_keyframe, track_count, track_ratio, median_pixel_motion)) {
         std::cout << "=> to skip keyframe creation for frame " << frame << std::endl;
         return;
     }
     std::cout << "=> to create keyframe for frame " << frame << std::endl;
+
+    auto map_to_track = create_map(matches_to_track_inliers, keyframe);
 
     auto newframe = std::make_shared<Keyframe>(frame, keypoints, descriptors, map_to_track);
 

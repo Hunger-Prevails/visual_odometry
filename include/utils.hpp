@@ -47,3 +47,9 @@ Eigen::VectorXd epipolar_products(
     const Eigen::MatrixX3d& points_a,
     const Eigen::MatrixX3d& points_b
 );
+
+float compute_median_pixel_motion(
+    const std::vector<cv::KeyPoint>& keypoints_a,
+    const std::vector<cv::KeyPoint>& keypoints_b,
+    const std::vector<cv::DMatch>& matches
+);
