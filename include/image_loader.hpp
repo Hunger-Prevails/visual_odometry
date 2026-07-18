@@ -16,6 +16,9 @@ public:
     ImageLoader(const fs::path& folder_path);
 
     cv::Mat operator[](size_t index) const;
+
+    std::string get_filename(size_t index) const;
+
     size_t size() const;
 };
 

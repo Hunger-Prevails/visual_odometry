@@ -4,6 +4,7 @@
 # include <opencv2/calib3d.hpp>
 # include <opencv2/core/eigen.hpp>
 # include <ranges>
+# include <numbers>
 # include <ceres/ceres.h>
 # include <indicators/progress_bar.hpp>
 # include "odometer.hpp"
@@ -14,6 +15,7 @@
 # include "viz_tools.hpp"
 # include "utils.hpp"
 
+const int Odometer::perspective_count(10);
 const int Odometer::perspective_iterations(100);
 const float Odometer::perspective_error(2.0);
 const float Odometer::perspective_error_rescue(3.0);
@@ -26,9 +28,15 @@ bool Odometer::skip_keyframe(bool allow_keyframe, int track_count, float track_r
     if (!allow_keyframe)
         return true;
 
-    if (this->track_count < track_count && this->track_ratio < track_ratio) return true;
+    if (this->track_count < track_count && this->track_ratio < track_ratio) {
+        std::cout << "=> => can still track an healthy amount of features" << std::endl;
+        return true;
+    }
 
-    if (median_pixel_motion <= this->median_pixel_motion) return true;
+    if (median_pixel_motion <= this->median_pixel_motion) {
+        std::cout << "=> => median pixel motion is too low" << std::endl;
+        return true;
+    }
 
     return false;
 }
@@ -46,10 +54,12 @@ Odometer::Odometer(
     float tolerance_function,
     float tolerance_gradient,
     float tolerance_parameter,
+    int solver_iterations,
     float test_ratio,
     int track_count,
     float track_ratio,
-    float median_pixel_motion
+    float median_pixel_motion,
+    float parallax_angle
 ):
     is_initialized(false),
     intrinsics(intrinsics),
@@ -63,9 +73,11 @@ Odometer::Odometer(
     tolerance_function(tolerance_function),
     tolerance_gradient(tolerance_gradient),
     tolerance_parameter(tolerance_parameter),
+    solver_iterations(solver_iterations),
     track_count(track_count),
     track_ratio(track_ratio),
-    median_pixel_motion(median_pixel_motion)
+    median_pixel_motion(median_pixel_motion),
+    parallax_angle(parallax_angle)
 {
     if (this->loader->size() <= temporal_baseline) {
         throw std::invalid_argument("There has to be at least as many frames as the temporal_baseline");
@@ -125,25 +137,39 @@ std::unordered_map<int, int> Odometer::create_map(const std::vector<cv::DMatch>&
     return feature_to_landmark;
 }
 
-std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> Odometer::track_or_chart(
+std::vector<cv::DMatch> Odometer::pick_matches_to_track(
     const std::shared_ptr<Keyframe> keyframe,
     const std::vector<cv::DMatch>& matches
 ) const {
     std::vector<cv::DMatch> matches_to_track;
+
+    for (auto& match: matches) {
+        auto iterator = keyframe->feature_to_landmark.find(match.queryIdx);
+
+        if (iterator != keyframe->feature_to_landmark.end()) matches_to_track.push_back(match);
+    }
+    return matches_to_track;
+}
+
+std::vector<cv::DMatch> Odometer::pick_matches_to_chart(
+    const std::shared_ptr<Keyframe> keyframe,
+    const std::shared_ptr<Keyframe> newframe,
+    const std::vector<cv::DMatch>& matches
+) const {
     std::vector<cv::DMatch> matches_to_chart;
 
     for (auto& match: matches) {
         auto iterator = keyframe->feature_to_landmark.find(match.queryIdx);
 
-        if (iterator == keyframe->feature_to_landmark.end()) {
-            matches_to_chart.push_back(match);
-            continue;
-        }
-        matches_to_track.push_back(match);
-    }
-    std::cout << "to track " << matches_to_track.size() << " and chart " << matches_to_chart.size() << " matches" << std::endl;
+        if (iterator != keyframe->feature_to_landmark.end()) continue;
 
-    return {matches_to_track, matches_to_chart};
+        iterator = newframe->feature_to_landmark.find(match.trainIdx);
+
+        if (iterator != newframe->feature_to_landmark.end()) continue;
+
+        matches_to_chart.push_back(match);
+    }
+    return matches_to_chart;
 }
 
 void Odometer::initialize() {
@@ -156,6 +182,8 @@ void Odometer::initialize() {
     auto [keypoints_b, descriptors_b] = extractor->extract(image_b);
 
     auto matches = matcher->match_knn(descriptors_a, descriptors_b);
+
+    std::cout << "=> => finds [" << matches.size() << "] initial matches" << std::endl;
 
     paint_matches(
         image_a,
@@ -186,13 +214,15 @@ void Odometer::initialize() {
         translation_a,
         translation_b
     );
+    std::cout << "=> => triangulates " << landmarks.size() << " new landmarks" << std::endl;
+
     auto map_a = create_map_query(matches_viable);
     auto map_b = create_map_train(matches_viable);
 
     this->landmarks = std::move(landmarks);
 
-    auto frame_a = std::make_shared<Keyframe>(0, keypoints_a, descriptors_a, map_a);
-    auto frame_b = std::make_shared<Keyframe>(temporal_baseline, keypoints_b, descriptors_b, map_b);
+    auto frame_a = std::make_shared<Keyframe>(0, true, keypoints_a, descriptors_a, map_a);
+    auto frame_b = std::make_shared<Keyframe>(temporal_baseline, true, keypoints_b, descriptors_b, map_b);
 
     rotations.emplace(0, rotation_a);
     rotations.emplace(temporal_baseline, rotation_b);
@@ -225,12 +255,72 @@ void Odometer::initialize() {
     std::cout << "=> completes initialization with " << this->landmarks.size() << " landmarks" << std::endl;
 }
 
+void Odometer::perhaps_add_to_map(const std::shared_ptr<Keyframe> keyframe, const std::shared_ptr<Keyframe> newframe) {
+    std::cout << "=> => attempts to chart against frame [" << keyframe->frame << "]" << std::endl;
+
+    auto matches = matcher->match_knn(keyframe->descriptors, newframe->descriptors);
+
+    std::cout << "=> => => finds [" << matches.size() << "] initial matches" << std::endl;
+
+    auto matches_to_chart = pick_matches_to_chart(keyframe, newframe, matches);
+
+    std::cout << "=> => => picks " << matches_to_chart.size() << " matches to chart" << std::endl;
+
+    auto matches_to_chart_inliers = epipolar_check(
+        keyframe->keypoints,
+        newframe->keypoints,
+        matches_to_chart,
+        rotations.at(keyframe->frame),
+        rotations.at(newframe->frame),
+        translations.at(keyframe->frame),
+        translations.at(newframe->frame)
+    );
+
+    auto matches_to_chart_parallax = parallax_angle_check(
+        keyframe->keypoints,
+        newframe->keypoints,
+        matches_to_chart_inliers,
+        rotations.at(keyframe->frame),
+        rotations.at(newframe->frame)
+    );
+
+    if (matches_to_chart_parallax.empty()) {
+        std::cout << "=> => => no feature match survives parallax angle check" << std::endl;
+        return;
+    }
+
+    auto [landmarks, matches_to_chart_viable] = triangulate(
+        keyframe->keypoints,
+        newframe->keypoints,
+        matches_to_chart_parallax,
+        rotations.at(keyframe->frame),
+        rotations.at(newframe->frame),
+        translations.at(keyframe->frame),
+        translations.at(newframe->frame)
+    );
+    if (landmarks.empty()) {
+        std::cout << "=> => => no new landmark survives cheirality check" << std::endl;
+        return;
+    }
+    newframe->with_triangulation = true;
+
+    std::cout << "=> => => triangulates " << landmarks.size() << " new landmarks" << std::endl;
+
+    auto map_to_chart_keyframe = create_map_query(matches_to_chart_viable, this->landmarks.size());
+    auto map_to_chart_newframe = create_map_train(matches_to_chart_viable, this->landmarks.size());
+
+    this->landmarks.insert(this->landmarks.end(), landmarks.begin(), landmarks.end());
+
+    keyframe->feature_to_landmark.insert(map_to_chart_keyframe.begin(), map_to_chart_keyframe.end());
+    newframe->feature_to_landmark.insert(map_to_chart_newframe.begin(), map_to_chart_newframe.end());
+}
+
 void Odometer::process_frame(int frame, bool allow_keyframe) {
     if (!is_initialized) {
         throw std::runtime_error("Call initialize() with two frames before processing frames.");
     }
-    std::cout << std::endl;
-    std::cout << "=> to process frame [" << frame << "]" << std::endl;
+    std::cout << std::endl << std::endl;
+    std::cout << "=> to process frame [" << frame << "] <" << loader->get_filename(frame) << ">" << std::endl;
 
     auto image = loader->operator[](frame);
     auto keyframe = keyframes.back();
@@ -239,7 +329,17 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
 
     auto matches = matcher->match_knn(keyframe->descriptors, descriptors);
 
-    auto [matches_to_track, matches_to_chart] = track_or_chart(keyframe, matches);
+    std::cout << "=> => finds [" << matches.size() << "] initial matches" << std::endl;
+
+    auto matches_to_track = pick_matches_to_track(keyframe, matches);
+
+    std::cout << "=> => picks " << matches_to_track.size() << " matches to track" << std::endl;
+
+    if (matches_to_track.size() < Odometer::perspective_count) {
+        std::cout << "=> not enough matches to track on frame [" << frame << "]" << std::endl;
+
+        throw std::runtime_error("Not enough matches to track => will terminate pipeline run");
+    }
 
     auto [rotation, translation, matches_to_track_inliers, matches_to_track_outliers] = compute_pose(
         keyframe,
@@ -256,7 +356,7 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
     rotations.emplace(frame, rotation);
     translations.emplace(frame, translation);
 
-    std::cout << "was able to track [" << matches_to_track_inliers.size() << " | ";
+    std::cout << "=> => was able to track [" << matches_to_track_inliers.size() << " | ";
     std::cout << keyframe->feature_to_landmark.size() << "] landmarks" << std::endl;
 
     auto track_count = matches_to_track_inliers.size();
@@ -268,61 +368,47 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
         std::cout << "=> to skip keyframe creation for frame " << frame << std::endl;
         return;
     }
-    std::cout << "=> to create keyframe for frame " << frame << std::endl;
-
     auto map_to_track = create_map(matches_to_track_inliers, keyframe);
 
-    auto newframe = std::make_shared<Keyframe>(frame, keypoints, descriptors, map_to_track);
+    auto newframe = std::make_shared<Keyframe>(frame, false, keypoints, descriptors, map_to_track);
 
-    auto matches_to_chart_inliers = epipolar_check(
-        keyframe->keypoints,
-        keypoints,
-        matches_to_chart,
-        rotations.at(keyframe->frame),
-        rotation,
-        translations.at(keyframe->frame),
-        translation
-    );
-
-    auto [landmarks, matches_to_chart_viable] = triangulate(
-        keyframe->keypoints,
-        keypoints,
-        matches_to_chart_inliers,
-        rotations.at(keyframe->frame),
-        rotation,
-        translations.at(keyframe->frame),
-        translation
-    );
-    auto map_to_chart_keyframe = create_map_query(matches_to_chart_viable, this->landmarks.size());
-    auto map_to_chart_newframe = create_map_train(matches_to_chart_viable, this->landmarks.size());
-
-    keyframe->feature_to_landmark.insert(map_to_chart_keyframe.begin(), map_to_chart_keyframe.end());
-    newframe->feature_to_landmark.insert(map_to_chart_newframe.begin(), map_to_chart_newframe.end());
-
-    if (newframe->feature_to_landmark.size() != map_to_track.size() + map_to_chart_newframe.size()) {
-        throw std::runtime_error("matches are likely not bijective");
-    }
-
-    this->landmarks.insert(this->landmarks.end(), landmarks.begin(), landmarks.end());
-    this->keyframes.push_back(newframe);
-
-    std::cout << "registers new keyframe with " << newframe->feature_to_landmark.size() << " landmark associations" << std::endl;
+    std::cout << std::endl;
+    std::cout << "=> registers new keyframe [" << frame << "] with " << newframe->feature_to_landmark.size() << " landmarks" << std::endl;
 
     show_keyframe(
         newframe,
         write_path / ("projections_frame_" + std::to_string(frame) + ".png")
     );
 
-    auto to_freeze = landmarks_to_freeze(keyframes.front());
+    auto keyframes_with_triangulation = keyframes | std::views::filter(
+        [] (const std::shared_ptr<Keyframe>& keyframe) {
+            return keyframe->with_triangulation;
+        }
+    );
 
-    if (count_keyframes < keyframes.size()) keyframes.pop_front();
+    auto keyframes_without_triangulation = keyframes | std::views::filter(
+        [] (const std::shared_ptr<Keyframe>& keyframe) {
+            return !keyframe->with_triangulation;
+        }
+    );
 
-    bundle_adjustment(to_freeze);
+    for (auto keyframe: keyframes_with_triangulation) perhaps_add_to_map(keyframe, newframe);
+
+    for (auto keyframe: keyframes_without_triangulation) perhaps_add_to_map(keyframe, newframe);
+
+    keyframes.push_back(newframe);
+
+    if (!newframe->with_triangulation) {
+        std::cout << "=> no new landmarks => to skip local bundle adjustment" << std::endl;
+        return;
+    }
+    bundle_adjustment();
 
     show_keyframe(
         newframe,
-        write_path / ("projections_frame_" + std::to_string(frame) + "_bundle_adjustment.png")
+        write_path / ("projections_frame_" + std::to_string(newframe->frame) + "_bundle_adjustment.png")
     );
+    while (count_keyframes < keyframes.size()) keyframes.pop_front();
 }
 
 void Odometer::process_frames() {
@@ -446,7 +532,7 @@ std::tuple<Eigen::Quaterniond, Eigen::Quaterniond, Eigen::Vector3d, Eigen::Vecto
 
     int inliers = cv::recoverPose(essentials, points_a, points_b, intrinsics, rotation, translation, mask);
 
-    std::cout << "=> finds " << inliers << " inlier keypoint matches after essential matrix recovery" << std::endl;
+    std::cout << "=> => finds " << inliers << " inlier keypoint matches after essential matrix recovery" << std::endl;
 
     auto matches_inliers = funnel_matches(matches, mask);
 
@@ -502,7 +588,7 @@ std::tuple<Eigen::Quaterniond, Eigen::Vector3d, std::vector<cv::DMatch>, std::ve
     }
     cv::Rodrigues(rotation_vector, rotation_mat);
 
-    std::cout << "=> finds " << inliers.rows << " inlier keypoint matches after perspective-n-point" << std::endl;
+    std::cout << "=> => finds " << inliers.rows << " inlier keypoint matches after perspective-n-point" << std::endl;
 
     auto [rotation_eigen, translation_eigen] = to_eigen(rotation_mat, translation_mat);
 
@@ -537,7 +623,7 @@ std::vector<cv::DMatch> Odometer::epipolar_check(
 
         matches_inliers.push_back(matches[i]);
     }
-    std::cout << "=> finds " << matches_inliers.size() << " inlier keypoint matches after epipolar check" << std::endl;
+    std::cout << "=> => => finds " << matches_inliers.size() << " inlier keypoint matches after epipolar check" << std::endl;
 
     return matches_inliers;
 }
@@ -568,9 +654,43 @@ std::vector<cv::DMatch> Odometer::rescue_matches(
 
         matches_to_rescue.push_back(matches[i]);
     }
-    std::cout << "to rescue " << matches_to_rescue.size() << " matches after perspective-n-point reprojection check" << std::endl;
+    std::cout << "=> => to rescue " << matches_to_rescue.size() << " matches after perspective-n-point reprojection check" << std::endl;
 
     return matches_to_rescue;
+}
+
+std::vector<cv::DMatch> Odometer::parallax_angle_check(
+    const std::vector<cv::KeyPoint>& keypoints_a,
+    const std::vector<cv::KeyPoint>& keypoints_b,
+    const std::vector<cv::DMatch>& matches,
+    const Eigen::Quaterniond& rotation_a,
+    const Eigen::Quaterniond& rotation_b
+) const {
+    auto [points_a, points_b] = keypoints_to_keypoints(keypoints_a, keypoints_b, matches);
+
+    auto points_a_homogeneous = to_homogeneous(points_a);
+    auto points_b_homogeneous = to_homogeneous(points_b);
+
+    auto rays_a_camera = points_a_homogeneous * intrinsics.inverse().transpose();
+    auto rays_b_camera = points_b_homogeneous * intrinsics.inverse().transpose();
+
+    Eigen::MatrixX3d rays_a_world = rays_a_camera * rotation_a.toRotationMatrix();
+    Eigen::MatrixX3d rays_b_world = rays_b_camera * rotation_b.toRotationMatrix();
+
+    auto dot_products = (rays_a_world.array() * rays_b_world.array()).rowwise().sum();
+
+    auto norms_a = rays_a_world.rowwise().norm();
+    auto norms_b = rays_b_world.rowwise().norm();
+
+    Eigen::ArrayXd cosines = dot_products.array() / norms_a.array() / norms_b.array();
+
+    auto angles = cosines.acos() / (std::numbers::pi / 180.0);
+
+    std::vector<cv::DMatch> matches_parallax;
+
+    for (size_t i = 0; i < matches.size(); ++i) if (parallax_angle <= angles(i)) matches_parallax.push_back(matches[i]);
+
+    return matches_parallax;
 }
 
 std::pair<std::vector<Eigen::Vector3d>, std::vector<cv::DMatch>> Odometer::triangulate(
@@ -627,13 +747,10 @@ std::pair<std::vector<Eigen::Vector3d>, std::vector<cv::DMatch>> Odometer::trian
         landmarks.push_back(landmark);
         matches_viable.push_back(matches[i]);
     }
-    std::cout << "manages to triangulate " << landmarks.size() << " landmarks from viable matches" << std::endl;
-
     return {landmarks, matches_viable};
 }
 
 void Odometer::bundle_adjustment_initial(std::shared_ptr<Keyframe> frame_a, std::shared_ptr<Keyframe> frame_b) {
-
     auto problem = ceres::Problem();
     auto loss_function = new ceres::HuberLoss(1.0);
 
@@ -671,15 +788,17 @@ void Odometer::bundle_adjustment_initial(std::shared_ptr<Keyframe> frame_a, std:
     options.function_tolerance = tolerance_function;
     options.gradient_tolerance = tolerance_gradient;
     options.parameter_tolerance = tolerance_parameter;
+    options.max_num_iterations = solver_iterations;
 
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
 }
 
-void Odometer::bundle_adjustment(std::vector<bool>& to_freeze) {
-    if (count_keyframes != this->keyframes.size()) {
-        throw std::runtime_error("Wrong number of keyframes present before bundle adjustment.");
-    }
+void Odometer::bundle_adjustment() {
+    std::cout << std::endl;
+    std::cout << "=> to perform local bundle adjustment with " << keyframes.size() << " keyframes" << std::endl;
+
+    auto to_freeze = landmarks_to_freeze(keyframes.front());
 
     auto problem = ceres::Problem();
     auto loss_function = new ceres::HuberLoss(1.0);
@@ -725,6 +844,7 @@ void Odometer::bundle_adjustment(std::vector<bool>& to_freeze) {
     options.function_tolerance = tolerance_function;
     options.gradient_tolerance = tolerance_gradient;
     options.parameter_tolerance = tolerance_parameter;
+    options.max_num_iterations = solver_iterations;
 
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);

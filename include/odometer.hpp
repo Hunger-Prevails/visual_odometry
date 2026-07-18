@@ -17,6 +17,8 @@ class Keyframe {
 public:
     size_t frame;
 
+    bool with_triangulation;
+
     std::vector<cv::KeyPoint> keypoints;
     cv::Mat descriptors;
 
@@ -26,6 +28,7 @@ public:
 
 class Odometer {
 protected:
+    static const int perspective_count;
     static const int perspective_iterations;
     static const float perspective_error;
     static const float perspective_error_rescue;
@@ -45,9 +48,11 @@ protected:
     float tolerance_function;
     float tolerance_gradient;
     float tolerance_parameter;
+    int solver_iterations;
     int track_count;
     float track_ratio;
     float median_pixel_motion;
+    float parallax_angle;
 
     fs::path write_path;
 
@@ -64,6 +69,8 @@ protected:
 
     bool skip_keyframe(bool allow_keyframe, int track_count, float track_ratio, float median_pixel_motion) const;
 
+    void perhaps_add_to_map(const std::shared_ptr<Keyframe> keyframe, const std::shared_ptr<Keyframe> newframe);
+
 public:
     Odometer(
         Eigen::Matrix3d intrinsics,
@@ -78,10 +85,12 @@ public:
         float tolerance_function = 1e-6,
         float tolerance_gradient = 1e-10,
         float tolerance_parameter = 1e-8,
+        int solver_iterations = 20,
         float test_ratio = 0.75,
         int track_count = 50,
         float track_ratio = 0.6,
-        float median_pixel_motion = 15.0
+        float median_pixel_motion = 15.0,
+        float parallax_angle = 2.0
     );
     ~Odometer();
 
@@ -101,8 +110,14 @@ protected:
 
     std::unordered_map<int, int> create_map(const std::vector<cv::DMatch>& matches, std::shared_ptr<Keyframe> keyframe) const;
 
-    std::pair<std::vector<cv::DMatch>, std::vector<cv::DMatch>> track_or_chart(
+    std::vector<cv::DMatch> pick_matches_to_track(
         const std::shared_ptr<Keyframe> keyframe,
+        const std::vector<cv::DMatch>& matches
+    ) const;
+
+    std::vector<cv::DMatch> pick_matches_to_chart(
+        const std::shared_ptr<Keyframe> keyframe,
+        const std::shared_ptr<Keyframe> newframe,
         const std::vector<cv::DMatch>& matches
     ) const;
 
@@ -138,6 +153,14 @@ protected:
         const Eigen::Vector3d& translation
     ) const;
 
+    std::vector<cv::DMatch> parallax_angle_check(
+        const std::vector<cv::KeyPoint>& keypoints_a,
+        const std::vector<cv::KeyPoint>& keypoints_b,
+        const std::vector<cv::DMatch>& matches,
+        const Eigen::Quaterniond& rotation_a,
+        const Eigen::Quaterniond& rotation_b
+    ) const;
+
     std::pair<std::vector<Eigen::Vector3d>, std::vector<cv::DMatch>> triangulate(
         const std::vector<cv::KeyPoint>& keypoints_a,
         const std::vector<cv::KeyPoint>& keypoints_b,
@@ -162,5 +185,5 @@ protected:
 
     void bundle_adjustment_initial(std::shared_ptr<Keyframe> frame_a, std::shared_ptr<Keyframe> frame_b);
 
-    void bundle_adjustment(std::vector<bool>& to_freeze);
+    void bundle_adjustment();
 };

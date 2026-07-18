@@ -36,34 +36,30 @@ Eigen::Matrix3d load_intrinsics(const fs::path& filepath, const std::string& cam
     return matrix;
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     cxxopts::Options options("visual-odometry", "options to configure visual odometry pipeline");
 
-    options.add_options()("sequence", "Path to the image sequence to process", cxxopts::value<fs::path>());
-    options.add_options()("write_path", "Path to write outputs to", cxxopts::value<fs::path>()->default_value("outputs"));
-    options.add_options()("intrinsics", "Path to intrinsics file", cxxopts::value<fs::path>()->default_value("intrinsics.json"));
-    options.add_options()("camera", "Name of camera", cxxopts::value<std::string>()->default_value("default"));
-    options.add_options()("count_features", "Maximum numbers of features to detect on a frame", cxxopts::value<int>()->default_value("2000"));
-    options.add_options()("count_keyframes", "Number of keyframes to maintain in memory", cxxopts::value<int>()->default_value("2"));
-    options.add_options()(
-        "temporal_baseline", "Number of frames between the two frames chosen for initialization", cxxopts::value<int>()->default_value("10")
-    );
-    options.add_options()("essential_confidence", "Confidence for essential matrix estimation", cxxopts::value<float>()->default_value("0.99"));
-    options.add_options()("essential_error", "Inlier tolerance for epipolar check", cxxopts::value<float>()->default_value("2.0"));
-    options.add_options()(
-        "essential_error_initial", "Inlier tolerance for epipolar check initially", cxxopts::value<float>()->default_value("1.0")
-    );
-    options.add_options()("tolerance_function", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-6"));
-    options.add_options()("tolerance_gradient", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-10"));
-    options.add_options()("tolerance_parameter", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-8"));
-    options.add_options()("test_ratio", "Test ratio against which to filter matches", cxxopts::value<float>()->default_value("0.75"));
-    options.add_options()("track_count", "Minimum number of landmarks a non-keyframe should track", cxxopts::value<int>()->default_value("50"));
-    options.add_options()("track_ratio", "Ratio of existant landmarks a non-keyframe should track", cxxopts::value<float>()->default_value("0.6"));
-    options.add_options()(
-        "median_pixel_motion", "Minimum median pixel motion a keyframe should observe", cxxopts::value<float>()->default_value("15.0")
-    );
-    options.add_options()("help", "Print help");
+    options.add_options()
+        ("sequence", "Path to the image sequence to process", cxxopts::value<fs::path>())
+        ("write_path", "Path to write outputs to", cxxopts::value<fs::path>()->default_value("outputs"))
+        ("intrinsics", "Path to intrinsics file", cxxopts::value<fs::path>()->default_value("intrinsics.json"))
+        ("camera", "Name of camera", cxxopts::value<std::string>()->default_value("default"))
+        ("count_features", "Maximum numbers of features to detect on a frame", cxxopts::value<int>()->default_value("2000"))
+        ("count_keyframes", "Number of keyframes to maintain in memory", cxxopts::value<int>()->default_value("2"))
+        ("temporal_baseline", "Number of frames between the two frames chosen for initialization", cxxopts::value<int>()->default_value("10"))
+        ("essential_confidence", "Confidence for essential matrix estimation", cxxopts::value<float>()->default_value("0.99"))
+        ("essential_error", "Inlier tolerance for epipolar check", cxxopts::value<float>()->default_value("2.0"))
+        ("essential_error_initial", "Inlier tolerance for epipolar check initially", cxxopts::value<float>()->default_value("1.0"))
+        ("tolerance_function", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-6"))
+        ("tolerance_gradient", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-10"))
+        ("tolerance_parameter", "Function tolerance for bundle adjustment", cxxopts::value<float>()->default_value("1e-8"))
+        ("solver_iterations", "Maximum number of iterations for bundle adjustment", cxxopts::value<int>()->default_value("20"))
+        ("test_ratio", "Test ratio against which to filter matches", cxxopts::value<float>()->default_value("0.75"))
+        ("track_count", "Minimum number of landmarks a non-keyframe should track", cxxopts::value<int>()->default_value("50"))
+        ("track_ratio", "Ratio of existant landmarks a non-keyframe should track", cxxopts::value<float>()->default_value("0.6"))
+        ("median_pixel_motion", "Minimum median pixel motion a keyframe should observe", cxxopts::value<float>()->default_value("15.0"))
+        ("parallax_angle", "Minimum parallax angle that justifies triangulation for a feature match", cxxopts::value<float>()->default_value("2.0"))
+        ("help", "Print help");
 
     auto args = options.parse(argc, argv);
 
@@ -88,10 +84,12 @@ int main(int argc, char *argv[])
         args["tolerance_function"].as<float>(),
         args["tolerance_gradient"].as<float>(),
         args["tolerance_parameter"].as<float>(),
+        args["solver_iterations"].as<int>(),
         args["test_ratio"].as<float>(),
         args["track_count"].as<int>(),
         args["track_ratio"].as<float>(),
-        args["median_pixel_motion"].as<float>()
+        args["median_pixel_motion"].as<float>(),
+        args["parallax_angle"].as<float>()
     );
 
     std::cout << "to start visual odometry" << std::endl;

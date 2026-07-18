@@ -70,7 +70,5 @@ std::vector<cv::DMatch> Matcher::match_knn(cv::Mat& descriptors_a, cv::Mat& desc
     }
     auto matches_bijective = enforce_bijection(matches);
 
-    std::cout << "to keep [" << matches_bijective.size() << " | " << matches_knn.size() << "] initial matches" << std::endl;
-
     return matches_bijective;
 }

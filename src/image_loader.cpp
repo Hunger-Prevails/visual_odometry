@@ -19,6 +19,13 @@ cv::Mat ImageLoader::operator[](size_t index) const {
     return cv::imread(paths[index].string(), cv::IMREAD_COLOR);
 }
 
+std::string ImageLoader::get_filename(size_t index) const {
+    if (index >= paths.size()) {
+        throw std::out_of_range("Index out of range in ImageLoader");
+    }
+    return paths[index].filename().string();
+}
+
 size_t ImageLoader::size() const {
     return paths.size();
 }
