@@ -284,6 +284,30 @@ void Odometer::perhaps_add_to_map(const std::shared_ptr<Keyframe> keyframe, cons
         rotations.at(newframe->frame)
     );
 
+    if (matches_to_chart_parallax.size() < matches_to_chart_inliers.size() / 5) {
+        std::cout << "=> => => very few matches survive parallax angle check" << std::endl;
+
+        auto image_a = loader->operator[](keyframe->frame);
+        auto image_b = loader->operator[](newframe->frame);
+
+        paint_matches(
+            image_a,
+            image_b,
+            keyframe->keypoints,
+            newframe->keypoints,
+            matches_to_chart_inliers,
+            write_path / ("matches_frame_" + std::to_string(newframe->frame) + "_to_frame_" + std::to_string(keyframe->frame) + "_inliers.png")
+        );
+        paint_matches(
+            image_a,
+            image_b,
+            keyframe->keypoints,
+            newframe->keypoints,
+            matches_to_chart_parallax,
+            write_path / ("matches_frame_" + std::to_string(newframe->frame) + "_to_frame_" + std::to_string(keyframe->frame) + "_parallax.png")
+        );
+    }
+
     if (matches_to_chart_parallax.empty()) {
         std::cout << "=> => => no feature match survives parallax angle check" << std::endl;
         return;
@@ -319,8 +343,7 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
     if (!is_initialized) {
         throw std::runtime_error("Call initialize() with two frames before processing frames.");
     }
-    std::cout << std::endl << std::endl;
-    std::cout << "=> to process frame [" << frame << "] <" << loader->get_filename(frame) << ">" << std::endl;
+    std::cout << std::endl;
 
     auto image = loader->operator[](frame);
     auto keyframe = keyframes.back();
@@ -341,12 +364,18 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
         throw std::runtime_error("Not enough matches to track => will terminate pipeline run");
     }
 
+    size_t last_frame = frame - 1;
+
+    while (rotations.find(last_frame) == rotations.end()) last_frame --;
+
+    if (translations.find(last_frame) == translations.end()) throw std::runtime_error("No translation found for last frame");
+
     auto [rotation, translation, matches_to_track_inliers, matches_to_track_outliers] = compute_pose(
         keyframe,
         keypoints,
         matches_to_track,
-        rotations.at(frame - 1),
-        translations.at(frame - 1)
+        rotations.at(last_frame),
+        translations.at(last_frame)
     );
 
     auto matches_to_track_rescue = rescue_matches(keyframe, keypoints, matches_to_track_outliers, rotation, translation);
@@ -402,6 +431,9 @@ void Odometer::process_frame(int frame, bool allow_keyframe) {
         std::cout << "=> no new landmarks => to skip local bundle adjustment" << std::endl;
         return;
     }
+
+    std::cout << "=> after triangulation the number of landmarks increases to " << newframe->feature_to_landmark.size() << std::endl;
+
     bundle_adjustment();
 
     show_keyframe(
@@ -424,7 +456,13 @@ void Odometer::process_frames() {
         indicators::option::End{"]"},
     };
     for (size_t i = 1; i < temporal_baseline; ++i) {
+        std::cout << std::endl;
+
+        bar_a.set_option(
+            indicators::option::PostfixText{"Frame [" + std::to_string(i) + "] <" + loader->get_filename(i) + ">"}
+        );
         bar_a.tick();
+
         process_frame(i, false);
     }
 
@@ -436,7 +474,13 @@ void Odometer::process_frames() {
         indicators::option::End{"]"},
     };
     for (size_t i = temporal_baseline + 1; i < loader->size(); ++i) {
+        std::cout << std::endl;
+
+        bar_b.set_option(
+            indicators::option::PostfixText{"Frame [" + std::to_string(i) + "] <" + loader->get_filename(i) + ">"}
+        );
         bar_b.tick();
+
         process_frame(i);
     }
 

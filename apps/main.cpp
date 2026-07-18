@@ -45,7 +45,7 @@ int main(int argc, char *argv[]) {
         ("intrinsics", "Path to intrinsics file", cxxopts::value<fs::path>()->default_value("intrinsics.json"))
         ("camera", "Name of camera", cxxopts::value<std::string>()->default_value("default"))
         ("count_features", "Maximum numbers of features to detect on a frame", cxxopts::value<int>()->default_value("2000"))
-        ("count_keyframes", "Number of keyframes to maintain in memory", cxxopts::value<int>()->default_value("2"))
+        ("count_keyframes", "Number of keyframes to maintain in memory", cxxopts::value<int>()->default_value("4"))
         ("temporal_baseline", "Number of frames between the two frames chosen for initialization", cxxopts::value<int>()->default_value("10"))
         ("essential_confidence", "Confidence for essential matrix estimation", cxxopts::value<float>()->default_value("0.99"))
         ("essential_error", "Inlier tolerance for epipolar check", cxxopts::value<float>()->default_value("2.0"))
